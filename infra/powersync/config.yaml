@@ -1,0 +1,19 @@
+# PowerSync service config (dev). Docs: https://docs.powersync.com/self-hosting
+replication:
+  connections:
+    - type: postgresql
+      uri: postgresql://tendto:tendto@db:5432/tendto
+
+storage:
+  type: postgresql
+  uri: postgresql://tendto:tendto@db:5432/tendto
+
+port: 8080
+
+sync_rules:
+  path: /config/sync-rules.yaml
+
+# Dev-only: accept Clerk JWTs; point at your instance's JWKS.
+client_auth:
+  jwks_uri: https://your-instance.clerk.accounts.dev/.well-known/jwks.json
+  audience: ["powersync"]

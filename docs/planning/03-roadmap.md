@@ -1,0 +1,102 @@
+# 03 — Roadmap (Strategic)
+
+High-level phases, not a sprint plan. The point is **sequence and de-risking**, not estimates.
+Each phase has an explicit "done means" so you know when to move on.
+
+## Phase 0 — Prove the sync loop (spike, throwaway)
+
+The architecture's one concentrated risk is the engine loop: **BlockNote → local SQLite →
+PowerSync → FastAPI → Postgres → back down to another device.** Prove it before real code.
+
+- A single page with the BlockNote editor, persisting blocks to the local replica (debounced).
+- PowerSync (cloud instance is fine for the spike) + a minimal FastAPI `uploadData` endpoint +
+  Postgres with sync rules for one workspace.
+- Test A (instant + live): edit on your laptop → change appears on your phone's browser in ~a
+  second; page loads/switches feel instant on both.
+- Test B (offline): airplane-mode one device, edit the same page on both, reconnect → queued write
+  uploads, LWW resolves, both devices converge; nothing lost silently on the *different-blocks*
+  case.
+
+**Done means:** you've personally watched instant local editing, live cross-device sync, *and* an
+offline edit merge on reconnect. That's all three product promises in one loop. *Throw the spike
+away afterward.*
+
+## Phase 1 — MVP: your tasks, on every device, instantly
+
+The smallest thing genuinely pleasant to use daily. Single-user, but the full sync model — so
+**instant feel, multi-device sync, and offline all ship in the first phase**; they're structural.
+
+- Accounts (Clerk) and a personal workspace; PowerSync auth via JWT.
+- Pages tree / sidebar (notes by category).
+- WYSIWYG block editor with a curated block set (text, headings, lists, checkboxes, quote, divider,
+  code, image) — resist adding more.
+- A simple to-do experience (checkbox blocks or a lightweight task list).
+- **Responsive layout + installable PWA** — same app on desktop browser and phone.
+- New-device flow: sign in → progressive initial sync (current workspace first).
+
+**Done means:** you've stopped using your old notes app, you routinely check off a task from your
+phone that you created on your laptop, and doing so in a dead zone doesn't matter.
+
+## Phase 2 — Collections, kanban & the startup workflow
+
+Turn it from a notebook into a light workspace — and make it multi-user.
+
+- **Collections** with **checklist, list, table, and board (kanban)** views over the same items
+  (JSONB properties; one primitive, many views). All instant — they're local queries.
+- The startup task workflow: a default board/template, statuses, assignee, due date.
+- **Shared workspaces**: invitations, memberships, roles (owner / editor / viewer) — enforced in
+  FastAPI on upload *and* in sync rules on download (doc 02, doc 05).
+- **Live collaboration, calm edition:** teammates' changes arrive via the sync stream automatically;
+  add lightweight **presence** ("who's here") over a small ephemeral channel. Character-level
+  co-editing stays deferred.
+- **Comments & @mentions** on pages/blocks — ordinary rows, they sync like everything else.
+- Strong default templates for the core use cases (this *is* the product — doc 01 §4).
+
+**Done means:** your startup is running its tasks in it instead of a separate tool.
+
+## Phase 3 — Calendar, the AI summary & polish
+
+Add the "organize your life" layer and the signature default feature, then harden.
+
+- **Calendar view**, plus the **unified calendar** overlaying date-bearing items across collections
+  (tasks + game sessions + movies) — an instant local query.
+- **Signature default: the end-of-day AI summary** (wins + task status) as a FastAPI scheduled job
+  with a model-choice setting and one off-toggle (doc 02 §A, doc 06).
+- **Search**: local SQLite FTS for instant workspace search; pgvector semantic search later.
+- Sync hardening: conflict edge cases, long-offline reconnects, "updated elsewhere" notices,
+  initial-sync performance.
+- Reliability: backups verified, restore drill, full **export** (JSON + Markdown); the
+  `docker compose` **self-host** path (FastAPI + Postgres + PowerSync open edition).
+
+**Done means:** your tasks, game sessions, and lists show up on one calendar, and you get a useful
+daily recap each evening.
+
+## Phase 4 — Native shells & earned nice-to-haves
+
+- **Native shells if earned** (doc 04): a Tauri desktop wrapper — now with a real rationale beyond
+  feel: **native SQLite is durable** where browser OPFS storage can be evicted — and/or a mobile
+  shell (Capacitor wrap, or React Native + Expo; PowerSync ships SDKs for both paths).
+- Then, and only then, weigh remaining nice-to-haves **one at a time** against the clutter test:
+  character-level co-editing (Yjs per active page), broader AI (inline writing, Q&A over notes),
+  web clipper, public publishing, API, timeline/Gantt, end-to-end encryption.
+
+**Done means:** anything added since Phase 3 has earned its place.
+
+---
+
+## What we are deliberately NOT building (guardrails)
+
+- ❌ A plugin marketplace / scripting platform — how Obsidian and Notion accreted clutter.
+- ❌ **A hand-built sync engine.** We went local-first *because* instant-feel is a pillar — but we
+  buy the machinery (PowerSync), we don't own a CRDT substrate or a sync protocol. If the engine
+  ever fails us, the exit ramp is plain rows in our own Postgres.
+- ❌ AI sprayed across the editing surface — the *only* default AI is the once-a-day summary.
+- ❌ Endlessly configurable databases (relations-of-relations, formula sprawl) — pick the 80% and stop.
+- ❌ Collaboration *noise* — activity feeds, notification systems, granular field-level governance.
+- ❌ Feature parity with Notion as a goal. Parity is the trap (doc 01 §3). **Focus is the moat.**
+
+## The recurring decision rule
+
+For every proposed feature, in every phase, ask the README's question:
+**"Does this add clutter?"** If yes → hide it behind progressive disclosure, defer it, or kill it.
+Speed and calm are the features you're actually shipping — and speed is now structural.

@@ -1,0 +1,26 @@
+# PowerSync sync rules — the DOWNLOAD tenancy boundary (docs/planning/05 §isolation).
+# A device only receives buckets for workspaces the authenticated user is a member of.
+# request.user_id() comes from the verified Clerk JWT `sub` claim.
+
+bucket_definitions:
+  # One bucket per workspace the user belongs to.
+  workspace_content:
+    parameters: |
+      SELECT workspace_id
+      FROM memberships
+      WHERE user_id = request.user_id()
+    data:
+      - SELECT * FROM pages WHERE workspace_id = bucket.workspace_id
+      - SELECT * FROM blocks WHERE workspace_id = bucket.workspace_id
+      - SELECT * FROM collections WHERE workspace_id = bucket.workspace_id
+      - SELECT * FROM items WHERE workspace_id = bucket.workspace_id
+
+  # The user's own memberships/workspaces (for the sidebar / workspace switcher).
+  user_meta:
+    parameters: |
+      SELECT request.user_id() AS user_id
+    data:
+      - SELECT * FROM memberships WHERE user_id = bucket.user_id
+      - SELECT w.* FROM workspaces w
+          JOIN memberships m ON m.workspace_id = w.id
+          WHERE m.user_id = bucket.user_id

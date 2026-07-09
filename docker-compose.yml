@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:16
+    container_name: tendto-db
+    environment:
+      POSTGRES_USER: tendto
+      POSTGRES_PASSWORD: tendto
+      POSTGRES_DB: tendto
+    # PowerSync requires logical replication
+    command: ["postgres", "-c", "wal_level=logical"]
+    ports:
+      - "5432:5432"
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tendto"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  powersync:
+    image: journeyapps/powersync-service:latest
+    container_name: tendto-powersync
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./infra/powersync/config.yaml:/config/config.yaml:ro
+      - ./infra/powersync/sync-rules.yaml:/config/sync-rules.yaml:ro
+    command: ["start", "-r", "unified", "-c", "/config/config.yaml"]
+
+volumes:
+  dbdata:

@@ -1,0 +1,23 @@
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+
+# node
+node_modules/
+apps/web/dist/
+*.tsbuildinfo
+
+# tooling
+.DS_Store
+*.log
+.idea/
+.vscode/
