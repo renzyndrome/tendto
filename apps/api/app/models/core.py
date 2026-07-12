@@ -41,7 +41,7 @@ class Membership(TimestampMixin, Base):
     __table_args__ = (Index("ix_memberships_user", "user_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(64), nullable=False)  # Clerk user id
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False)  # better-auth user id
     workspace_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
     )
@@ -66,7 +66,9 @@ class Block(TimestampMixin, Base):
     __tablename__ = "blocks"
     __table_args__ = (Index("ix_blocks_page", "page_id"),)
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    # Block ids are BlockNote-owned strings, NOT UUIDs — the one synced PK that is
+    # not a UUID column. Everything else keys off client-generated UUIDs.
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
     workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     page_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("pages.id", ondelete="CASCADE"), nullable=False
