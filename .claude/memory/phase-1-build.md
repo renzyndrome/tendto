@@ -57,8 +57,16 @@ strict `tsc` is the enforced gate.
   comments; Phase 3 pgvector semantic search/Q&A, interactive AI (Summarize/Ask AI), backup-restore
   drill, real scheduler + summary delivery.
 
-**E2E done-gate (Playwright) — 2026-07-12:** `make e2e` boots the full stack and runs 10 specs
-(one per Phase 0–3 feature) through a real browser — all green. See `docs/e2e.md` +
+**Solo-use completeness — 2026-07-12:** filled the daily-driver gaps for single-user use —
+**editable page titles** (`page-editor.tsx`), **nested pages** ("categories": `parent_id` tree +
+add-subpage + collapse in the sidebar), and **delete** for pages (cascades subpages+blocks) and
+collections (cascades items) via `lib/pages.ts` + `lib/collections.ts`. BlockNote's slash-menu /
+input-rule block set (headings, lists, checkboxes, quote, code, table) works out of the box; image
+*upload* is deferred (needs object storage — image-by-URL works). Row actions are hover-revealed
+(clutter-free).
+
+**E2E done-gate (Playwright) — 2026-07-12:** `make e2e` boots the full stack and runs 15 specs
+(one+ per feature, incl. titles/nesting/delete/block-types) through a real browser — all green. See `docs/e2e.md` +
 `apps/web/e2e/`. Chromium-only (OPFS). Per-test fresh user via the better-auth API
 (`e2e/fixtures.ts`); cross-device tests use a second browser context (fresh replica). Running it
 LIVE surfaced 5 real issues unit tests missed, now fixed:
