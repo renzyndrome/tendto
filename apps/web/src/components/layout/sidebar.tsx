@@ -123,6 +123,7 @@ export function Sidebar() {
         <div className="mb-3 space-y-0.5">
           <SidebarButton label="Search…" hint="⌘K" onClick={() => setSearchOpen(true)} />
           <SidebarButton label="Calendar" onClick={() => navigate({ to: "/calendar" })} />
+          <SidebarButton label="Focus" onClick={() => navigate({ to: "/focus" })} />
         </div>
 
         <SectionHeader label="Pages" newLabel="New page" onNew={() => void handleNewPage(null)} />

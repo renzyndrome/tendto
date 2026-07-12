@@ -4,6 +4,7 @@ import { createRootRoute, createRoute, createRouter } from "@tanstack/react-rout
 import { CalendarView } from "../components/calendar/calendar-view";
 import { CollectionView } from "../components/collection/collection-view";
 import { PageEditor } from "../components/editor/page-editor";
+import { FocusView } from "../components/focus/focus-view";
 import { AppShell } from "../components/layout/app-shell";
 
 const rootRoute = createRootRoute({ component: AppShell });
@@ -44,11 +45,18 @@ const calendarRoute = createRoute({
   component: CalendarView,
 });
 
+const focusRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/focus",
+  component: FocusView,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   pageRoute,
   collectionRoute,
   calendarRoute,
+  focusRoute,
 ]);
 
 export const router = createRouter({ routeTree });
