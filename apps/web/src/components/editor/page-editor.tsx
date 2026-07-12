@@ -1,14 +1,11 @@
 /**
- * PageEditor — BlockNote wired to the local replica.
+ * PageEditor — an editable title + BlockNote wired to the local replica.
  *
  * The hydrate/persist loop is designed to NOT fight BlockNote's own document state:
- *
- *  - Hydrate ONCE per pageId via a one-shot read (`loadBlocks`), never a reactive query. The
- *    inner editor is keyed by pageId so switching pages remounts it with fresh initialContent.
- *    We deliberately do not re-hydrate an open editor when the replica changes — live external
- *    edits to the page you're editing are Phase 2.
- *  - Persist on change, debounced ~500ms, into the local db (`persistBlocks`). PowerSync's
- *    connector uploads the queued CRUD automatically. There is NO network code in this file.
+ *  - Hydrate ONCE per pageId via a one-shot read (title + blocks), never a reactive query. The
+ *    inner editor is keyed by pageId so switching pages remounts it with fresh content.
+ *  - Persist on change, debounced, into the local db. PowerSync's connector uploads the queued
+ *    CRUD automatically. There is NO network code in this file.
  */
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
@@ -18,32 +15,38 @@ import { BlockNoteView } from "@blocknote/mantine";
 import { useCreateBlockNote } from "@blocknote/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import {
-  loadBlocks,
-  persistBlocks,
-  rowToBlock,
-  type BlockRow,
-} from "../../lib/blocks/serialize";
+import { loadBlocks, persistBlocks, rowToBlock, type BlockRow } from "../../lib/blocks/serialize";
+import { renamePage } from "../../lib/pages";
+import { db } from "../../lib/powersync/client";
 import { useUiStore } from "../../stores/ui";
 import { Spinner } from "../ui/spinner";
 
 const SAVE_DEBOUNCE_MS = 500;
+const TITLE_DEBOUNCE_MS = 400;
+
+interface Loaded {
+  blocks: BlockRow[];
+  title: string;
+}
 
 export function PageEditor({ pageId }: { pageId: string }) {
-  const [blocks, setBlocks] = useState<BlockRow[] | null>(null);
+  const [loaded, setLoaded] = useState<Loaded | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setBlocks(null); // show the spinner while switching pages
-    void loadBlocks(pageId).then((rows) => {
-      if (!cancelled) setBlocks(rows);
+    setLoaded(null); // spinner while switching pages
+    void Promise.all([
+      loadBlocks(pageId),
+      db.getAll<{ title: string }>("SELECT title FROM pages WHERE id = ?", [pageId]),
+    ]).then(([blocks, rows]) => {
+      if (!cancelled) setLoaded({ blocks, title: rows[0]?.title ?? "" });
     });
     return () => {
       cancelled = true;
     };
   }, [pageId]);
 
-  if (blocks === null) {
+  if (loaded === null) {
     return (
       <div className="flex h-full items-center justify-center">
         <Spinner label="Loading page…" />
@@ -51,23 +54,30 @@ export function PageEditor({ pageId }: { pageId: string }) {
     );
   }
 
-  // key={pageId}: force a fresh editor per page so initialContent is applied on switch.
-  return <PageEditorInner key={pageId} pageId={pageId} initialBlocks={blocks} />;
+  // key={pageId}: fresh editor + title per page so initial content is applied on switch.
+  return (
+    <PageEditorInner
+      key={pageId}
+      pageId={pageId}
+      initialBlocks={loaded.blocks}
+      initialTitle={loaded.title}
+    />
+  );
 }
 
 interface PageEditorInnerProps {
   pageId: string;
   initialBlocks: BlockRow[];
+  initialTitle: string;
 }
 
-function PageEditorInner({ pageId, initialBlocks }: PageEditorInnerProps) {
+function PageEditorInner({ pageId, initialBlocks, initialTitle }: PageEditorInnerProps) {
   const workspaceId = useUiStore((s) => s.activeWorkspaceId);
 
   const initialContent = useMemo(
     () => (initialBlocks.length > 0 ? initialBlocks.map(rowToBlock) : undefined),
     [initialBlocks],
   );
-
   const editor = useCreateBlockNote({ initialContent });
 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -83,8 +93,7 @@ function PageEditorInner({ pageId, initialBlocks }: PageEditorInnerProps) {
     void persistBlocks(pageId, workspaceId, editor.document as Block[]);
   }, [editor, pageId, workspaceId]);
 
-  // Flush any pending save when leaving the page (unmount) or before deps change.
-  useEffect(() => flush, [flush]);
+  useEffect(() => flush, [flush]); // flush pending save on unmount / dep change
 
   const handleChange = useCallback(() => {
     dirty.current = true;
@@ -94,7 +103,40 @@ function PageEditorInner({ pageId, initialBlocks }: PageEditorInnerProps) {
 
   return (
     <div className="mx-auto min-h-full max-w-3xl px-6 py-10">
+      <PageTitle pageId={pageId} initialTitle={initialTitle} />
       <BlockNoteView editor={editor} onChange={handleChange} />
     </div>
+  );
+}
+
+/** Editable page title. Loaded once per page; commits debounced + on unmount (no reactive loop). */
+function PageTitle({ pageId, initialTitle }: { pageId: string; initialTitle: string }) {
+  const [title, setTitle] = useState(initialTitle);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latest = useRef(initialTitle);
+  latest.current = title;
+
+  useEffect(() => {
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+      void renamePage(pageId, latest.current.trim());
+    };
+  }, [pageId]);
+
+  function onChange(value: string) {
+    setTitle(value);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => void renamePage(pageId, value.trim()), TITLE_DEBOUNCE_MS);
+  }
+
+  return (
+    <input
+      value={title}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder="Untitled"
+      aria-label="Page title"
+      data-testid="page-title"
+      className="mb-3 w-full bg-transparent text-3xl font-bold text-neutral-900 outline-none placeholder:text-neutral-300"
+    />
   );
 }

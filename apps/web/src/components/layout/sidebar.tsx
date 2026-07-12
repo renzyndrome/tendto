@@ -1,17 +1,17 @@
 /**
- * Left sidebar: active workspace, reactive Pages + Collections lists, "new" actions, sign-out.
- *
- * The lists are PowerSync reactive queries — they re-render instantly whenever the local `pages`
- * / `collections` tables change (local edit or synced-down change). Creating a page or collection
- * is a local INSERT; PowerSync uploads it. No content read/write here touches the network directly.
+ * Left sidebar: active workspace, a nested Pages tree + Collections list, create/delete actions,
+ * search/calendar/export, sign-out. Lists are PowerSync reactive queries — they re-render instantly
+ * on any local or synced change. Creating/deleting is a local write; PowerSync uploads it.
  */
 import { useQuery } from "@powersync/react";
 import { useNavigate } from "@tanstack/react-router";
-import { type ReactNode, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { signOut } from "../../lib/auth/client";
 import { clearAuthToken } from "../../lib/auth/token";
+import { createCollection, deleteCollectionCascade } from "../../lib/collections";
 import { exportWorkspace } from "../../lib/export";
+import { createPage, deletePageCascade } from "../../lib/pages";
 import { db } from "../../lib/powersync/client";
 import { useUiStore } from "../../stores/ui";
 
@@ -20,7 +20,7 @@ interface WorkspaceRow {
   name: string;
 }
 
-interface NamedRow {
+interface CollectionRow {
   id: string;
   name: string;
 }
@@ -28,14 +28,7 @@ interface NamedRow {
 interface PageRow {
   id: string;
   title: string;
-}
-
-async function nextPagePosition(workspaceId: string): Promise<number> {
-  const rows = await db.getAll<{ next: number | null }>(
-    "SELECT MAX(position) AS next FROM pages WHERE workspace_id = ?",
-    [workspaceId],
-  );
-  return (rows[0]?.next ?? -1) + 1;
+  parent_id: string | null;
 }
 
 export function Sidebar() {
@@ -49,42 +42,54 @@ export function Sidebar() {
     [workspaceId ?? ""],
   );
   const { data: pages } = useQuery<PageRow>(
-    "SELECT id, title FROM pages WHERE workspace_id = ? ORDER BY position",
+    "SELECT id, title, parent_id FROM pages WHERE workspace_id = ? ORDER BY position",
     [workspaceId ?? ""],
   );
-  const { data: collections } = useQuery<NamedRow>(
+  const { data: collections } = useQuery<CollectionRow>(
     "SELECT id, name FROM collections WHERE workspace_id = ? ORDER BY created_at",
     [workspaceId ?? ""],
   );
 
   const workspaceName = workspaces[0]?.name ?? "Workspace";
 
-  async function handleNewPage() {
+  // Group pages by parent for the tree (null parent = top level).
+  const childrenByParent = useMemo(() => {
+    const map = new Map<string | null, PageRow[]>();
+    for (const page of pages) {
+      const key = page.parent_id ?? null;
+      const list = map.get(key) ?? [];
+      list.push(page);
+      map.set(key, list);
+    }
+    return map;
+  }, [pages]);
+  const rootPages = childrenByParent.get(null) ?? [];
+
+  async function handleNewPage(parentId: string | null): Promise<void> {
     if (!workspaceId) return;
-    const id = crypto.randomUUID();
-    const now = new Date().toISOString();
-    const position = await nextPagePosition(workspaceId);
-    await db.execute(
-      `INSERT INTO pages (id, workspace_id, parent_id, title, position, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [id, workspaceId, null, "Untitled", position, now, now],
-    );
+    const id = await createPage(workspaceId, parentId);
     void navigate({ to: "/p/$pageId", params: { pageId: id } });
   }
 
-  async function handleNewCollection() {
+  async function handleDeletePage(pageId: string, title: string): Promise<void> {
+    if (!window.confirm(`Delete "${title || "Untitled"}" and any subpages?`)) return;
+    await deletePageCascade(pageId);
+    void navigate({ to: "/" });
+  }
+
+  async function handleNewCollection(): Promise<void> {
     if (!workspaceId) return;
-    const id = crypto.randomUUID();
-    const now = new Date().toISOString();
-    await db.execute(
-      `INSERT INTO collections (id, workspace_id, name, default_view, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, workspaceId, "Untitled", "board", now, now],
-    );
+    const id = await createCollection(workspaceId);
     void navigate({ to: "/c/$collectionId", params: { collectionId: id } });
   }
 
-  async function handleExport() {
+  async function handleDeleteCollection(collectionId: string, name: string): Promise<void> {
+    if (!window.confirm(`Delete "${name || "Untitled"}" and its items?`)) return;
+    await deleteCollectionCascade(collectionId);
+    void navigate({ to: "/" });
+  }
+
+  async function handleExport(): Promise<void> {
     if (!workspaceId || exporting) return;
     setExporting(true);
     try {
@@ -96,11 +101,9 @@ export function Sidebar() {
     }
   }
 
-  async function handleSignOut() {
+  async function handleSignOut(): Promise<void> {
     await signOut();
     clearAuthToken();
-    // Stop syncing with a now-invalid token. (Local data is kept so re-login stays instant;
-    // a shared-device flow would instead `disconnectAndClear()` on a different user's sign-in.)
     try {
       await db.disconnect();
     } catch {
@@ -122,43 +125,53 @@ export function Sidebar() {
           <SidebarButton label="Calendar" onClick={() => navigate({ to: "/calendar" })} />
         </div>
 
-        <SidebarSection
-          label="Pages"
-          onNew={handleNewPage}
-          newLabel="New page"
-          empty={pages.length === 0 ? "No pages yet" : null}
-        >
-          {pages.map((page) => (
-            <SidebarLink
-              key={page.id}
-              label={page.title || "Untitled"}
-              onClick={() => navigate({ to: "/p/$pageId", params: { pageId: page.id } })}
-            />
-          ))}
-        </SidebarSection>
+        <SectionHeader label="Pages" newLabel="New page" onNew={() => void handleNewPage(null)} />
+        <div className="mb-4">
+          {rootPages.length === 0 ? (
+            <p className="px-2 py-1.5 text-sm text-neutral-400">No pages yet</p>
+          ) : (
+            rootPages.map((page) => (
+              <PageNode
+                key={page.id}
+                page={page}
+                childrenByParent={childrenByParent}
+                depth={0}
+                onOpen={(id) => navigate({ to: "/p/$pageId", params: { pageId: id } })}
+                onAddSub={(id) => void handleNewPage(id)}
+                onDelete={(id, title) => void handleDeletePage(id, title)}
+              />
+            ))
+          )}
+        </div>
 
-        <SidebarSection
+        <SectionHeader
           label="Collections"
-          onNew={handleNewCollection}
           newLabel="New collection"
-          empty={collections.length === 0 ? "No collections yet" : null}
-        >
-          {collections.map((collection) => (
-            <SidebarLink
-              key={collection.id}
-              label={collection.name || "Untitled"}
-              onClick={() =>
-                navigate({ to: "/c/$collectionId", params: { collectionId: collection.id } })
-              }
-            />
-          ))}
-        </SidebarSection>
+          onNew={() => void handleNewCollection()}
+        />
+        <div className="mb-4 space-y-0.5">
+          {collections.length === 0 ? (
+            <p className="px-2 py-1.5 text-sm text-neutral-400">No collections yet</p>
+          ) : (
+            collections.map((collection) => (
+              <RowWithDelete
+                key={collection.id}
+                label={collection.name || "Untitled"}
+                deleteLabel="Delete collection"
+                onOpen={() =>
+                  navigate({ to: "/c/$collectionId", params: { collectionId: collection.id } })
+                }
+                onDelete={() => void handleDeleteCollection(collection.id, collection.name)}
+              />
+            ))
+          )}
+        </div>
       </nav>
 
       <div className="space-y-0.5 border-t border-neutral-200 px-3 py-3">
         <button
           type="button"
-          onClick={handleExport}
+          onClick={() => void handleExport()}
           disabled={exporting}
           className="w-full rounded-md px-2 py-1.5 text-left text-sm text-neutral-500 hover:bg-neutral-200/60 hover:text-neutral-900 disabled:opacity-50"
         >
@@ -166,7 +179,7 @@ export function Sidebar() {
         </button>
         <button
           type="button"
-          onClick={handleSignOut}
+          onClick={() => void handleSignOut()}
           className="w-full rounded-md px-2 py-1.5 text-left text-sm text-neutral-500 hover:bg-neutral-200/60 hover:text-neutral-900"
         >
           Sign out
@@ -176,45 +189,148 @@ export function Sidebar() {
   );
 }
 
-interface SidebarSectionProps {
-  label: string;
-  newLabel: string;
-  onNew: () => void;
-  empty: string | null;
-  children: ReactNode;
+interface PageNodeProps {
+  page: PageRow;
+  childrenByParent: Map<string | null, PageRow[]>;
+  depth: number;
+  onOpen: (id: string) => void;
+  onAddSub: (id: string) => void;
+  onDelete: (id: string, title: string) => void;
 }
 
-function SidebarSection({ label, newLabel, onNew, empty, children }: SidebarSectionProps) {
+function PageNode({ page, childrenByParent, depth, onOpen, onAddSub, onDelete }: PageNodeProps) {
+  const children = childrenByParent.get(page.id) ?? [];
+  const [expanded, setExpanded] = useState(true);
+  const hasChildren = children.length > 0;
+
   return (
-    <section className="mb-4">
-      <div className="flex items-center justify-between px-2 py-1">
-        <span className="text-xs font-medium uppercase tracking-wide text-neutral-400">{label}</span>
+    <div>
+      <div
+        className="group flex items-center gap-1 rounded-md pr-1 hover:bg-neutral-200/60"
+        style={{ paddingLeft: depth * 12 }}
+      >
+        {hasChildren ? (
+          <button
+            type="button"
+            onClick={() => setExpanded((e) => !e)}
+            aria-label={expanded ? "Collapse" : "Expand"}
+            className="w-4 shrink-0 text-xs text-neutral-400"
+          >
+            {expanded ? "▾" : "▸"}
+          </button>
+        ) : (
+          <span className="w-4 shrink-0" aria-hidden />
+        )}
         <button
           type="button"
-          onClick={onNew}
-          aria-label={newLabel}
-          title={newLabel}
-          className="rounded px-1 text-base leading-none text-neutral-400 hover:bg-neutral-200/60 hover:text-neutral-700"
+          onClick={() => onOpen(page.id)}
+          className="flex-1 truncate py-1.5 text-left text-sm text-neutral-700"
+        >
+          {page.title || "Untitled"}
+        </button>
+        <button
+          type="button"
+          onClick={() => onAddSub(page.id)}
+          aria-label="Add subpage"
+          title="Add subpage"
+          className="invisible shrink-0 rounded px-1 text-neutral-400 hover:text-neutral-800 group-hover:visible"
         >
           +
         </button>
+        <button
+          type="button"
+          onClick={() => onDelete(page.id, page.title)}
+          aria-label="Delete page"
+          title="Delete page"
+          className="invisible shrink-0 rounded px-1 text-neutral-400 hover:text-red-500 group-hover:visible"
+        >
+          ×
+        </button>
       </div>
-      <ul className="space-y-0.5">
-        {children}
-        {empty ? <li className="px-2 py-1.5 text-sm text-neutral-400">{empty}</li> : null}
-      </ul>
-    </section>
+      {hasChildren && expanded
+        ? children.map((child) => (
+            <PageNode
+              key={child.id}
+              page={child}
+              childrenByParent={childrenByParent}
+              depth={depth + 1}
+              onOpen={onOpen}
+              onAddSub={onAddSub}
+              onDelete={onDelete}
+            />
+          ))
+        : null}
+    </div>
   );
 }
 
-interface SidebarButtonProps {
+function SectionHeader({
+  label,
+  newLabel,
+  onNew,
+}: {
+  label: string;
+  newLabel: string;
+  onNew: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between px-2 py-1">
+      <span className="text-xs font-medium uppercase tracking-wide text-neutral-400">{label}</span>
+      <button
+        type="button"
+        onClick={onNew}
+        aria-label={newLabel}
+        title={newLabel}
+        className="rounded px-1 text-base leading-none text-neutral-400 hover:bg-neutral-200/60 hover:text-neutral-700"
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
+function RowWithDelete({
+  label,
+  deleteLabel,
+  onOpen,
+  onDelete,
+}: {
+  label: string;
+  deleteLabel: string;
+  onOpen: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="group flex items-center rounded-md pr-1 hover:bg-neutral-200/60">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex-1 truncate px-2 py-1.5 text-left text-sm text-neutral-700"
+      >
+        {label}
+      </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        aria-label={deleteLabel}
+        title={deleteLabel}
+        className="invisible shrink-0 rounded px-1 text-neutral-400 hover:text-red-500 group-hover:visible"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
+function SidebarButton({
+  label,
+  hint,
+  onClick,
+}: {
   label: string;
   hint?: string;
   onClick: () => void;
-}
-
-/** A standalone top-level nav row (Search, Calendar) — not part of a list section. */
-function SidebarButton({ label, hint, onClick }: SidebarButtonProps) {
+}) {
   return (
     <button
       type="button"
@@ -224,19 +340,5 @@ function SidebarButton({ label, hint, onClick }: SidebarButtonProps) {
       <span>{label}</span>
       {hint ? <span className="text-xs text-neutral-400">{hint}</span> : null}
     </button>
-  );
-}
-
-function SidebarLink({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={onClick}
-        className="block w-full truncate rounded-md px-2 py-1.5 text-left text-sm text-neutral-700 hover:bg-neutral-200/60"
-      >
-        {label}
-      </button>
-    </li>
   );
 }
