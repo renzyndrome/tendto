@@ -5,9 +5,9 @@
  * view (or a synced-down change) re-render instantly.
  */
 import { useQuery } from "@powersync/react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { createItem, type ItemRow } from "../../lib/items/mutations";
+import { createItem, parseColumns, type ItemRow } from "../../lib/items/mutations";
 import { db } from "../../lib/powersync/client";
 import { useUiStore } from "../../stores/ui";
 import { Spinner } from "../ui/spinner";
@@ -30,6 +30,7 @@ interface CollectionRow {
   id: string;
   name: string;
   default_view: string;
+  config: string;
 }
 
 function isViewKind(value: string | undefined): value is CollectionViewKind {
@@ -40,7 +41,7 @@ export function CollectionView({ collectionId }: { collectionId: string }) {
   const workspaceId = useUiStore((s) => s.activeWorkspaceId);
 
   const { data: collections, isLoading } = useQuery<CollectionRow>(
-    "SELECT id, name, default_view FROM collections WHERE id = ?",
+    "SELECT id, name, default_view, config FROM collections WHERE id = ?",
     [collectionId],
   );
   const { data: items } = useQuery<ItemRow>(
@@ -50,6 +51,7 @@ export function CollectionView({ collectionId }: { collectionId: string }) {
 
   const collection = collections[0];
   const [override, setOverride] = useState<CollectionViewKind | null>(null);
+  const columns = useMemo(() => parseColumns(collection?.config), [collection?.config]);
   const view: CollectionViewKind =
     override ?? (isViewKind(collection?.default_view) ? collection.default_view : "board");
 
@@ -80,7 +82,7 @@ export function CollectionView({ collectionId }: { collectionId: string }) {
 
   async function handleNewItem(): Promise<void> {
     if (!workspaceId) return;
-    await createItem(workspaceId, collectionId, { title: "" });
+    await createItem(workspaceId, collectionId, { title: "", status: columns[0]?.id });
   }
 
   return (
@@ -116,13 +118,18 @@ export function CollectionView({ collectionId }: { collectionId: string }) {
 
       <div className="min-h-0 flex-1 overflow-auto">
         {view === "checklist" ? (
-          <ChecklistView items={items} />
+          <ChecklistView items={items} columns={columns} />
         ) : view === "list" ? (
-          <ListView items={items} />
+          <ListView items={items} columns={columns} />
         ) : view === "table" ? (
-          <TableView items={items} />
+          <TableView items={items} columns={columns} />
         ) : (
-          <BoardView items={items} workspaceId={workspaceId} collectionId={collectionId} />
+          <BoardView
+            items={items}
+            workspaceId={workspaceId}
+            collectionId={collectionId}
+            columns={columns}
+          />
         )}
       </div>
     </div>

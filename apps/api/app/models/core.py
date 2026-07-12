@@ -89,6 +89,9 @@ class Collection(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     default_view: Mapped[str] = mapped_column(String(16), nullable=False, default="checklist")
     # views: checklist | list | table | board | calendar
+    # Per-collection view config, e.g. {"columns": [{"id": "todo", "label": "To do"}, ...]} for
+    # the board's status columns. Empty ⇒ the client falls back to the default three columns.
+    config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
 
 
 class Item(TimestampMixin, Base):

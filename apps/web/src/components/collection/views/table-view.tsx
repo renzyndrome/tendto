@@ -1,15 +1,13 @@
-/** Table view: editable Title / Status / Due / Assignee cells over the same items. */
+/** Table view: editable Title / Status / Due / Assignee cells. Status options are the board columns. */
 import {
   parseProperties,
   patchItem,
-  STATUS_LABELS,
-  STATUSES,
+  type Column,
   type ItemRow,
-  type Status,
 } from "../../../lib/items/mutations";
 import { InlineText } from "./inline-text";
 
-export function TableView({ items }: { items: ItemRow[] }) {
+export function TableView({ items, columns }: { items: ItemRow[]; columns: Column[] }) {
   if (items.length === 0) {
     return <p className="py-10 text-center text-sm text-neutral-400">No items yet — add one above.</p>;
   }
@@ -26,6 +24,7 @@ export function TableView({ items }: { items: ItemRow[] }) {
       <tbody>
         {items.map((row) => {
           const props = parseProperties(row);
+          const known = columns.some((c) => c.id === props.status);
           return (
             <tr key={row.id} className="border-b border-neutral-100">
               <td className="py-1 pr-4">
@@ -39,12 +38,14 @@ export function TableView({ items }: { items: ItemRow[] }) {
               <td className="py-1 pr-4">
                 <select
                   value={props.status}
-                  onChange={(e) => void patchItem(row, { status: e.target.value as Status })}
+                  onChange={(e) => void patchItem(row, { status: e.target.value })}
                   className="rounded border border-neutral-200 bg-white px-1.5 py-1 text-sm text-neutral-700"
                 >
-                  {STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {STATUS_LABELS[s]}
+                  {/* Keep an orphaned status visible until the user re-picks a column. */}
+                  {known ? null : <option value={props.status}>{props.status}</option>}
+                  {columns.map((column) => (
+                    <option key={column.id} value={column.id}>
+                      {column.label}
                     </option>
                   ))}
                 </select>

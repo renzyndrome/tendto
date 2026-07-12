@@ -39,6 +39,7 @@ TABLE_MODELS = {
 JSON_COLUMNS: dict[str, set[str]] = {
     "blocks": {"content"},
     "items": {"properties"},
+    "collections": {"config"},
 }
 # Columns the client is never allowed to drive directly on a write.
 _RESERVED_COLUMNS = {"id", "created_at", "updated_at"}

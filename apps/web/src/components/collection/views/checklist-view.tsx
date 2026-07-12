@@ -1,30 +1,43 @@
-/** Checklist view: a checkbox (checked = status "done") + inline-editable title per item. */
-import { deleteItem, parseProperties, patchItem, type ItemRow } from "../../../lib/items/mutations";
+/**
+ * Checklist view: a checkbox + inline-editable title per item. "Checked" means the item is in the
+ * board's LAST column (its "done" column); toggling moves it between the first and last columns —
+ * so the checklist and the board stay in sync on custom column sets too.
+ */
+import {
+  deleteItem,
+  parseProperties,
+  patchItem,
+  type Column,
+  type ItemRow,
+} from "../../../lib/items/mutations";
 import { InlineText } from "./inline-text";
 
-export function ChecklistView({ items }: { items: ItemRow[] }) {
+export function ChecklistView({ items, columns }: { items: ItemRow[]; columns: Column[] }) {
+  const todoId = columns[0]?.id ?? "todo";
+  const doneId = columns[columns.length - 1]?.id ?? "done";
+
   if (items.length === 0) {
     return <p className="py-10 text-center text-sm text-neutral-400">No items yet — add one above.</p>;
   }
   return (
     <ul data-testid="checklist" className="space-y-0.5">
       {items.map((row) => (
-        <ChecklistRow key={row.id} row={row} />
+        <ChecklistRow key={row.id} row={row} todoId={todoId} doneId={doneId} />
       ))}
     </ul>
   );
 }
 
-function ChecklistRow({ row }: { row: ItemRow }) {
+function ChecklistRow({ row, todoId, doneId }: { row: ItemRow; todoId: string; doneId: string }) {
   const props = parseProperties(row);
-  const done = props.status === "done";
+  const done = props.status === doneId;
 
   return (
     <li className="group flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-neutral-50">
       <input
         type="checkbox"
         checked={done}
-        onChange={() => void patchItem(row, { status: done ? "todo" : "done" })}
+        onChange={() => void patchItem(row, { status: done ? todoId : doneId })}
         className="h-4 w-4 shrink-0 rounded border-neutral-300"
         aria-label={done ? "Mark not done" : "Mark done"}
       />

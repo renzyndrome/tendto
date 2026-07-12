@@ -9,29 +9,53 @@
  */
 import { db } from "../powersync/client";
 
-export const STATUSES = ["todo", "doing", "done"] as const;
-export type Status = (typeof STATUSES)[number];
-
-export const STATUS_LABELS: Record<Status, string> = {
-  todo: "To do",
-  doing: "In progress",
-  done: "Done",
-};
-
-export const STATUS_COLORS: Record<Status, string> = {
-  todo: "bg-neutral-300",
-  doing: "bg-amber-400",
-  done: "bg-emerald-500",
-};
-
-export function isStatus(value: unknown): value is Status {
-  return typeof value === "string" && (STATUSES as readonly string[]).includes(value);
+/** A board status column. `id` is what's stored in `item.properties.status`; `label` is display. */
+export interface Column {
+  id: string;
+  label: string;
 }
 
-/** The properties we rely on. Extra keys are allowed and surfaced in the table view. */
+/** Boards default to these three when a collection has no custom columns configured. */
+export const DEFAULT_COLUMNS: Column[] = [
+  { id: "todo", label: "To do" },
+  { id: "doing", label: "In progress" },
+  { id: "done", label: "Done" },
+];
+
+const COLUMN_PALETTE = [
+  "bg-neutral-300",
+  "bg-amber-400",
+  "bg-emerald-500",
+  "bg-sky-400",
+  "bg-violet-400",
+  "bg-rose-400",
+];
+
+/** A stable dot color for the column at `index` (cycles through the palette). */
+export function columnColor(index: number): string {
+  if (index < 0) return "bg-neutral-300";
+  return COLUMN_PALETTE[index % COLUMN_PALETTE.length];
+}
+
+/** Parse a collection's board columns from its `config` JSON string; default three when unset. */
+export function parseColumns(config: string | null | undefined): Column[] {
+  if (!config) return DEFAULT_COLUMNS;
+  try {
+    const parsed = JSON.parse(config) as { columns?: unknown };
+    if (!Array.isArray(parsed.columns)) return DEFAULT_COLUMNS;
+    const columns = parsed.columns
+      .filter((c): c is Column => !!c && typeof (c as Column).id === "string")
+      .map((c) => ({ id: c.id, label: typeof c.label === "string" && c.label ? c.label : c.id }));
+    return columns.length > 0 ? columns : DEFAULT_COLUMNS;
+  } catch {
+    return DEFAULT_COLUMNS;
+  }
+}
+
+/** The properties we rely on. `status` is a free-form board-column id. Extra keys pass through. */
 export interface ItemProperties {
   title: string;
-  status: Status;
+  status: string;
   due?: string; // ISO date (YYYY-MM-DD)
   assignee?: string;
   [key: string]: unknown;
@@ -57,7 +81,7 @@ export function parseProperties(row: ItemRow): ItemProperties {
     raw = {};
   }
   const title = typeof raw.title === "string" ? raw.title : "";
-  const status = isStatus(raw.status) ? raw.status : "todo";
+  const status = typeof raw.status === "string" && raw.status ? raw.status : "todo";
   return { ...raw, title, status };
 }
 
@@ -111,7 +135,7 @@ export async function patchItem(row: ItemRow, patch: Partial<ItemProperties>): P
 }
 
 /** Move an item into a status column (board DnD), appending it to the end of the collection. */
-export async function moveItemToStatus(row: ItemRow, status: Status): Promise<void> {
+export async function moveItemToStatus(row: ItemRow, status: string): Promise<void> {
   const next = { ...(await currentProperties(row)), status };
   const position = await nextPosition(row.collection_id);
   await db.execute("UPDATE items SET properties = ?, position = ?, updated_at = ? WHERE id = ?", [

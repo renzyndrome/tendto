@@ -1,12 +1,14 @@
-/** List view: a compact read of each item — status dot, title, optional assignee + due. */
+/** List view: a compact read of each item — a column-colored status dot, title, assignee + due. */
 import {
+  columnColor,
   parseProperties,
-  STATUS_COLORS,
-  STATUS_LABELS,
+  type Column,
   type ItemRow,
 } from "../../../lib/items/mutations";
 
-export function ListView({ items }: { items: ItemRow[] }) {
+export function ListView({ items, columns }: { items: ItemRow[]; columns: Column[] }) {
+  const indexById = new Map(columns.map((c, i) => [c.id, i]));
+
   if (items.length === 0) {
     return <p className="py-10 text-center text-sm text-neutral-400">No items yet — add one above.</p>;
   }
@@ -14,11 +16,12 @@ export function ListView({ items }: { items: ItemRow[] }) {
     <ul className="divide-y divide-neutral-100">
       {items.map((row) => {
         const props = parseProperties(row);
+        const index = indexById.get(props.status) ?? -1;
         return (
           <li key={row.id} className="flex items-center gap-3 px-2 py-2">
             <span
-              className={`h-2 w-2 shrink-0 rounded-full ${STATUS_COLORS[props.status]}`}
-              title={STATUS_LABELS[props.status]}
+              className={`h-2 w-2 shrink-0 rounded-full ${columnColor(index)}`}
+              title={columns[index]?.label ?? props.status}
               aria-hidden
             />
             <span className="flex-1 truncate text-sm text-neutral-800">

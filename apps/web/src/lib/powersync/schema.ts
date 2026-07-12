@@ -54,6 +54,7 @@ const collections = new Table(
     workspace_id: column.text,
     name: column.text,
     default_view: column.text,
+    config: column.text, // JSON string: per-collection view config (board columns)
     created_at: column.text,
     updated_at: column.text,
   },

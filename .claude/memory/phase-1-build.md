@@ -65,8 +65,17 @@ input-rule block set (headings, lists, checkboxes, quote, code, table) works out
 *upload* is deferred (needs object storage — image-by-URL works). Row actions are hover-revealed
 (clutter-free).
 
-**E2E done-gate (Playwright) — 2026-07-12:** `make e2e` boots the full stack and runs 15 specs
-(one+ per feature, incl. titles/nesting/delete/block-types) through a real browser — all green. See `docs/e2e.md` +
+**Custom kanban columns — 2026-07-12:** boards have per-collection columns (add/rename/reorder/
+delete), not just To do/In progress/Done. Stored in a new `collections.config` JSONB
+(`{columns:[{id,label}]}`; the three-place change: model + migration `0002` + `schema.ts` +
+`sync.py` JSON_COLUMNS + powersync restart). `item.properties.status` is now a free column id;
+`parseColumns()` defaults to the three when config is empty (backward compatible). Checklist
+"done" = the *last* column; calendar decoupled from status color (neutral dot). Deleting a column
+reassigns its cards to the first column.
+
+**E2E done-gate (Playwright) — 2026-07-12:** `make e2e` boots the full stack and runs 16 specs
+(one+ per feature, incl. titles/nesting/delete/block-types/custom-columns) through a real
+browser — all green. See `docs/e2e.md` +
 `apps/web/e2e/`. Chromium-only (OPFS). Per-test fresh user via the better-auth API
 (`e2e/fixtures.ts`); cross-device tests use a second browser context (fresh replica). Running it
 LIVE surfaced 5 real issues unit tests missed, now fixed:

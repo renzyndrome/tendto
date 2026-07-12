@@ -16,14 +16,13 @@ import {
   toDateKey,
   WEEKDAYS,
 } from "../../lib/calendar";
-import { parseProperties, STATUS_COLORS, type ItemRow, type Status } from "../../lib/items/mutations";
+import { parseProperties, type ItemRow } from "../../lib/items/mutations";
 import { useUiStore } from "../../stores/ui";
 
 interface CalendarItem {
   id: string;
   collectionId: string;
   title: string;
-  status: Status;
 }
 
 export function CalendarView() {
@@ -49,7 +48,6 @@ export function CalendarView() {
         id: row.id,
         collectionId: row.collection_id,
         title: props.title || "Untitled",
-        status: props.status,
       });
       map.set(due, list);
     }
@@ -165,7 +163,7 @@ function CalendarChip({
       title={item.title}
       className="flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] text-neutral-700 hover:bg-neutral-100"
     >
-      <span className={"h-2 w-2 shrink-0 rounded-full " + STATUS_COLORS[item.status]} />
+      <span className="h-2 w-2 shrink-0 rounded-full bg-neutral-400" aria-hidden />
       <span className="truncate">{item.title}</span>
     </button>
   );
