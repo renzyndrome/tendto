@@ -1,0 +1,20 @@
+# PowerSync service config (production — see docker-compose.prod.yml).
+# `!env` values are injected by compose; sync-rules.yaml is shared with dev.
+replication:
+  connections:
+    - type: postgresql
+      uri: !env PS_DATABASE_URI
+
+storage:
+  type: postgresql
+  uri: !env PS_DATABASE_URI
+
+port: 8080
+
+sync_rules:
+  path: /config/sync-rules.yaml
+
+# Verify better-auth JWTs over the internal network (must match AUTH_AUDIENCE).
+client_auth:
+  jwks_uri: !env PS_JWKS_URI
+  audience: ["tendto"]

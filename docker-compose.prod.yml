@@ -1,0 +1,103 @@
+# Production stack for Dokploy (create a "Compose" service pointing at this file).
+#
+# - Set the environment variables below in Dokploy's Environment tab (see .env.prod.example).
+# - Attach domains in Dokploy's Domains tab (Traefik handles HTTPS/Let's Encrypt):
+#     web       → service web,       port 80
+#     api       → service api,       port 8000
+#     auth      → service auth,      port 3001
+#     powersync → service powersync, port 8080
+# - Postgres is NOT exposed publicly; services reach it over the internal network.
+# - Deploy steps after first boot (Dokploy terminal or SSH):
+#     docker compose -f docker-compose.prod.yml run --rm auth bunx @better-auth/cli migrate
+#     docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: tendto
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set in Dokploy env}"
+      POSTGRES_DB: tendto
+    # PowerSync requires logical replication
+    command: ["postgres", "-c", "wal_level=logical"]
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tendto"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - internal
+
+  powersync:
+    image: journeyapps/powersync-service:latest
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PS_DATABASE_URI: postgresql://tendto:${POSTGRES_PASSWORD}@db:5432/tendto
+      PS_JWKS_URI: http://auth:3001/api/auth/jwks
+    volumes:
+      - ./infra/powersync/config.prod.yaml:/config/config.yaml:ro
+      - ./infra/powersync/sync-rules.yaml:/config/sync-rules.yaml:ro
+    command: ["start", "-r", "unified", "-c", "/config/config.yaml"]
+    networks:
+      - internal
+      - dokploy-network
+
+  auth:
+    build: ./apps/auth
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      AUTH_URL: "${AUTH_URL:?public https URL, e.g. https auth.tendto.example}"
+      AUTH_PORT: "3001"
+      AUTH_SECRET: "${AUTH_SECRET:?generate with openssl rand -base64 32}"
+      AUTH_DATABASE_URL: postgresql://tendto:${POSTGRES_PASSWORD}@db:5432/tendto
+      AUTH_ISSUER: ${AUTH_URL}
+      AUTH_AUDIENCE: ${AUTH_AUDIENCE:-tendto}
+      WEB_URL: "${WEB_URL:?public https URL, e.g. https tendto.example}"
+    networks:
+      - internal
+      - dokploy-network
+
+  api:
+    build: ./apps/api
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://tendto:${POSTGRES_PASSWORD}@db:5432/tendto
+      # Issuer = the public URL better-auth stamps into tokens; JWKS fetched internally.
+      AUTH_ISSUER: ${AUTH_URL}
+      AUTH_JWKS_URL: http://auth:3001/api/auth/jwks
+      AUTH_AUDIENCE: ${AUTH_AUDIENCE:-tendto}
+      WEB_URL: ${WEB_URL}
+      # AI daily summary — empty AI_API_KEY keeps the offline fallback (no external calls).
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
+    networks:
+      - internal
+      - dokploy-network
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        # Baked into the static bundle at build time — public URLs only.
+        VITE_API_URL: "${API_URL:?public https URL, e.g. https api.tendto.example}"
+        VITE_POWERSYNC_URL: "${POWERSYNC_URL:?public https URL, e.g. https sync.tendto.example}"
+        VITE_AUTH_URL: ${AUTH_URL}
+    networks:
+      - dokploy-network
+
+volumes:
+  dbdata:
+
+networks:
+  internal:
+  dokploy-network:
+    external: true

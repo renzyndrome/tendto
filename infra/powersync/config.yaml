@@ -3,17 +3,23 @@ replication:
   connections:
     - type: postgresql
       uri: postgresql://tendto:tendto@db:5432/tendto
+      # sslmode=disable: the plain dev Postgres image has SSL off, and PowerSync's pgwire driver
+      # otherwise insists on SSL ("postgres does not support ssl"). Managed PG (Supabase) has SSL.
+      sslmode: disable
 
+# Bucket storage on MongoDB (single-node replica set; see docker-compose.yml). PowerSync's
+# canonical self-host storage — Postgres remains the replication source above.
 storage:
-  type: postgresql
-  uri: postgresql://tendto:tendto@db:5432/tendto
+  type: mongodb
+  uri: mongodb://mongo:27017/powersync
 
 port: 8080
 
 sync_rules:
   path: /config/sync-rules.yaml
 
-# Dev-only: accept Clerk JWTs; point at your instance's JWKS.
+# Dev-only: accept better-auth JWTs (apps/auth on the host, :13001).
+# host.docker.internal is mapped via extra_hosts in docker-compose.yml (Linux).
 client_auth:
-  jwks_uri: https://your-instance.clerk.accounts.dev/.well-known/jwks.json
-  audience: ["powersync"]
+  jwks_uri: http://host.docker.internal:13001/api/auth/jwks
+  audience: ["tendto"]

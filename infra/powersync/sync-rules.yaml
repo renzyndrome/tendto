@@ -1,26 +1,23 @@
 # PowerSync sync rules — the DOWNLOAD tenancy boundary (docs/planning/05 §isolation).
 # A device only receives buckets for workspaces the authenticated user is a member of.
-# request.user_id() comes from the verified Clerk JWT `sub` claim.
+# request.user_id() comes from the verified better-auth JWT `sub` claim.
+#
+# PowerSync data queries must SELECT from a SINGLE table (no JOINs) — so the workspace a user
+# belongs to is resolved once in the bucket `parameters` query (which may join/scope freely to
+# the request), and every `data` query then filters by the resolved bucket.workspace_id.
 
 bucket_definitions:
-  # One bucket per workspace the user belongs to.
+  # One bucket per workspace the user belongs to. Everything tenant-scoped rides this bucket,
+  # including the workspace row and its memberships (so the sidebar + workspace switcher work).
   workspace_content:
     parameters: |
       SELECT workspace_id
       FROM memberships
       WHERE user_id = request.user_id()
     data:
+      - SELECT * FROM workspaces WHERE id = bucket.workspace_id
+      - SELECT * FROM memberships WHERE workspace_id = bucket.workspace_id
       - SELECT * FROM pages WHERE workspace_id = bucket.workspace_id
       - SELECT * FROM blocks WHERE workspace_id = bucket.workspace_id
       - SELECT * FROM collections WHERE workspace_id = bucket.workspace_id
       - SELECT * FROM items WHERE workspace_id = bucket.workspace_id
-
-  # The user's own memberships/workspaces (for the sidebar / workspace switcher).
-  user_meta:
-    parameters: |
-      SELECT request.user_id() AS user_id
-    data:
-      - SELECT * FROM memberships WHERE user_id = bucket.user_id
-      - SELECT w.* FROM workspaces w
-          JOIN memberships m ON m.workspace_id = w.id
-          WHERE m.user_id = bucket.user_id

@@ -9,7 +9,7 @@ services:
     # PowerSync requires logical replication
     command: ["postgres", "-c", "wal_level=logical"]
     ports:
-      - "5432:5432"
+      - "15432:5432"  # non-default host port; other local projects use 5432
     volumes:
       - dbdata:/var/lib/postgresql/data
     healthcheck:
@@ -18,14 +18,42 @@ services:
       timeout: 3s
       retries: 10
 
+  # PowerSync bucket storage. MongoDB (single-node replica set) is PowerSync's canonical
+  # self-host storage; the Postgres-storage path hit a pgwire query bug on Postgres 16 here.
+  # Postgres is still the replication SOURCE (source of truth) — only the sync buckets live here.
+  mongo:
+    image: mongo:7
+    container_name: tendto-mongo
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    healthcheck:
+      # Auto-initiate the single-node replica set that PowerSync's storage requires.
+      test:
+        [
+          "CMD",
+          "mongosh",
+          "--quiet",
+          "--eval",
+          "try { rs.status().ok } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] }).ok }",
+        ]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+    volumes:
+      - mongodata:/data/db
+
   powersync:
     image: journeyapps/powersync-service:latest
     container_name: tendto-powersync
     depends_on:
       db:
         condition: service_healthy
+      mongo:
+        condition: service_healthy
+    # Reach the better-auth service (apps/auth) running on the host for JWKS verification
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
-      - "8080:8080"
+      - "18080:8080"  # non-default host port
     volumes:
       - ./infra/powersync/config.yaml:/config/config.yaml:ro
       - ./infra/powersync/sync-rules.yaml:/config/sync-rules.yaml:ro
@@ -33,3 +61,4 @@ services:
 
 volumes:
   dbdata:
+  mongodata:
