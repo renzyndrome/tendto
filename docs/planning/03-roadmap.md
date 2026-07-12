@@ -21,12 +21,18 @@ PowerSync → FastAPI → Postgres → back down to another device.** Prove it b
 offline edit merge on reconnect. That's all three product promises in one loop. *Throw the spike
 away afterward.*
 
+> **Status (2026-07-09):** the loop is implemented directly on the scaffold (not a throwaway spike,
+> since the scaffold already de-risks it): FastAPI `POST /sync/upload` (membership/role + LWW
+> upsert, 17 tests green), Alembic migration, BlockNote⇄replica editor. Left to run live: stand up
+> `apps/auth` (Bun) + the PowerSync container and watch the two-device / airplane-mode tests.
+
 ## Phase 1 — MVP: your tasks, on every device, instantly
 
 The smallest thing genuinely pleasant to use daily. Single-user, but the full sync model — so
 **instant feel, multi-device sync, and offline all ship in the first phase**; they're structural.
 
-- Accounts (Clerk) and a personal workspace; PowerSync auth via JWT.
+- Accounts (better-auth: email/password + OAuth) and a personal workspace; PowerSync auth via
+  better-auth's JWT plugin (JWKS).
 - Pages tree / sidebar (notes by category).
 - WYSIWYG block editor with a curated block set (text, headings, lists, checkboxes, quote, divider,
   code, image) — resist adding more.
@@ -36,6 +42,11 @@ The smallest thing genuinely pleasant to use daily. Single-user, but the full sy
 
 **Done means:** you've stopped using your old notes app, you routinely check off a task from your
 phone that you created on your laptop, and doing so in a dead zone doesn't matter.
+
+> **Status (2026-07-09):** MVP foundation built — better-auth email/password sign-in, `POST
+> /bootstrap` provisioning the personal workspace, app shell + reactive page sidebar, and the
+> block editor persisting to the replica. Remaining Phase-1 polish: pages *tree* (nesting), the
+> curated block set/toolbar tuning, PWA install check, and a live end-to-end run.
 
 ## Phase 2 — Collections, kanban & the startup workflow
 
@@ -54,6 +65,13 @@ Turn it from a notebook into a light workspace — and make it multi-user.
 
 **Done means:** your startup is running its tasks in it instead of a separate tool.
 
+> **Status (2026-07-09):** collections shipped — one `items` primitive rendered as four views
+> (checklist, list, table, kanban board with drag-between-columns), inline editing everywhere,
+> all instant from the replica and synced through the *existing* generic write path (zero backend
+> change — collections/items already had models, sync rules, and schema). Still open in Phase 2:
+> shared-workspace **invitations/roles** (better-auth org + email), **presence**, and
+> **comments/@mentions** — each needs new infra, so each is its own pass.
+
 ## Phase 3 — Calendar, the AI summary & polish
 
 Add the "organize your life" layer and the signature default feature, then harden.
@@ -70,6 +88,15 @@ Add the "organize your life" layer and the signature default feature, then harde
 
 **Done means:** your tasks, game sessions, and lists show up on one calendar, and you get a useful
 daily recap each evening.
+
+> **Status (2026-07-09):** the Phase 3 headliners are built and verified — **unified calendar**
+> (month grid over every date-bearing item, instant local query), **instant search** (Cmd/⌘K
+> palette over pages/blocks/items; LIKE for MVP, FTS5 noted as the later step), full **export**
+> (JSON + Markdown download from the replica), and the **daily AI summary** (FastAPI
+> `POST /ai/daily-summary`, provider-agnostic with an offline no-key fallback; the scheduled
+> ambient job is scaffolded, delivery + scheduler deferred). Still open in Phase 3: **pgvector
+> semantic** search/Q&A, the **backup/restore drill**, and sync-hardening edge cases — all need
+> live services (and an LLM key) to build meaningfully.
 
 ## Phase 4 — Native shells & earned nice-to-haves
 

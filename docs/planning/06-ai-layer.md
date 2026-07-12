@@ -14,6 +14,14 @@ an **offline/local AI option** Notion structurally can't match. All facts curren
   the *user* triggers them (`/summarize`, or select → Ask AI) — so a "full" integration is still
   calm, because nothing is ambient noise.
 
+> **Status (2026-07-09):** the ambient daily summary is implemented server-side in `app/ai/`
+> — a provider abstraction (OpenAI-compatible HTTP provider + an **offline no-key fallback** so it
+> runs without a model), a tenancy-scoped activity gatherer, and `POST /ai/daily-summary` as the
+> user-triggered entry point. The once-daily ambient job `run_daily_summaries()` is scaffolded;
+> scheduler + delivery are deferred. Configure with `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL`
+> (point `AI_BASE_URL` at an Ollama `/v1` for the local option). The **interactive** tier
+> (per-page Summarize, Ask AI, workspace Q&A + pgvector) is not built yet.
+
 ## Notion AI in 2026 — the benchmark (what to adopt, what to skip)
 
 | Notion AI feature | What it is | TendTo |

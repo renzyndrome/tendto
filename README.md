@@ -17,6 +17,7 @@ Full plan: [docs/planning/](./docs/planning/) — start with
 apps/
   web/    Vite + React 19 + TS SPA (PWA) — BlockNote editor, PowerSync client, TanStack Router
   api/    FastAPI — the authoritative write path (sync upload), permissions, scheduled jobs
+  auth/   better-auth on Hono + Bun — sessions, orgs/invites, JWT + JWKS (infra, not product code)
 infra/
   powersync/   sync-rules.yaml + service config
 docs/
@@ -29,10 +30,16 @@ docs/
 
 ```bash
 cp .env.example .env          # fill in values
-make db                       # postgres via docker compose
-make api                      # FastAPI on :8000
-make web                      # Vite dev server on :5173
+make db                       # postgres (:15432) + powersync (:18080) via docker compose
+make api                      # FastAPI on :18000
+make auth                     # better-auth service on :13001
+make web                      # Vite dev server on :15173
 ```
+
+## Deploy
+
+One Dokploy Compose service from `docker-compose.prod.yml` (Postgres + PowerSync + auth + API
++ static web). See [docs/deploy-dokploy.md](./docs/deploy-dokploy.md).
 
 ## Current phase
 

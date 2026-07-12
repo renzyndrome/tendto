@@ -23,8 +23,8 @@ search later.
 
 - **Supabase (recommended to start)** — managed Postgres + **RLS** + storage bundled, a self-host
   path (keeps the no-lock-in promise credible), and **first-class PowerSync integration** — the
-  pairing is well-documented, which matters more than raw feature lists. Use it as managed Postgres
-  while Clerk owns auth.
+  pairing is well-documented, which matters more than raw feature lists. Use it as managed
+  Postgres; better-auth's tables live in the same database (we skip Supabase Auth — see §3).
 - **Neon (solid alternative)** — serverless Postgres with branching for preview environments. Its
   scale-to-zero economics fit this architecture well (reads never hit the server; Postgres works
   only on writes and sync), but verify logical-replication support fits PowerSync's needs on your
@@ -71,19 +71,34 @@ Tenancy has two flows, and each has a boundary, with RLS as the backstop behind 
 Keep heavier isolation (schema- or database-per-tenant) in reserve for enterprise customers who
 demand hard separation.
 
-## 3. Auth — don't roll your own for a public app
+## 3. Auth — self-hosted framework, because per-user pricing punishes this product
 
-- **Clerk (recommended to start)** — ships an **Organizations** product with prebuilt invite /
-  org-switcher / role UI, so "personal or company group" is largely solved out of the box. Clerk's
-  JWTs also authenticate the PowerSync client (the engine validates the token, sync rules read the
-  user id from it). Watch per-active-user pricing as you grow.
-- **WorkOS (AuthKit)** — free up to 1M MAU; **SSO/SCIM** is its core. Add when selling to companies
-  that demand enterprise sign-in.
-- **Auth0** — general-purpose; multi-tenant authorization tends to stay application-owned.
+TendTo's shape — many small (often free) workspaces, every active user syncing daily — is exactly
+the shape usage-priced auth vendors bill hardest. Clerk (the original pick, dropped 2026-07) bills
+per retained user **plus ~$1/org/month** past its free tiers: roughly **$1k/mo at 100K users**
+before the org meter, which grows with every two-person team. So auth is a self-hosted framework —
+*not* hand-rolled crypto:
+
+- **better-auth (chosen)** — open-source TypeScript auth framework; its tables live in **our own
+  Postgres** (zero marginal cost per user, no vendor lock-in). The **organization plugin** covers
+  organizations, email invitations, roles (owner/admin/member + custom), and teams — the Clerk
+  Organizations equivalent. The **JWT plugin** exposes a JWKS endpoint and a `/token` endpoint:
+  FastAPI and the PowerSync service both verify those JWTs statelessly, filling exactly the
+  contract Clerk's JWTs used to fill (PowerSync officially supports custom JWKS issuers, including
+  better-auth's default EdDSA keys). Runs as a tiny dedicated Bun service (`apps/auth`, Hono) —
+  a deliberate, contained amendment to "no Node services": commodity infrastructure beside the
+  PowerSync container, never product logic.
+- **WorkOS (AuthKit)** — unchanged: add later when enterprise customers demand SSO/SCIM
+  (per-connection pricing, only paid when an enterprise deal funds it).
+- **Considered and not chosen:** Supabase Auth (cheapest, first-class PowerSync pairing, but no
+  organization/invite primitive — we'd rebuild that layer anyway); Stack Auth (closest open-source
+  Clerk clone, but younger and Next.js-centric); Zitadel/Keycloak (full IdPs — operationally
+  overkill for this team size).
 
 ## 4. "Open to the public" — the newly required pieces
 
-- **Managed auth** (Clerk/WorkOS) — never hand-roll for a public app.
+- **A real auth framework** (better-auth; WorkOS for enterprise SSO later) — never hand-roll
+  crypto/sessions for a public app; self-hosting a framework is not hand-rolling.
 - **Transactional email** (Resend/Postmark) — invites, verification, daily AI summary delivery.
 - **Billing** (Stripe) — per-seat for company groups; free personal tier.
 - **Backups + point-in-time recovery** — included with Supabase/Neon; verify restores. (Device
@@ -101,8 +116,9 @@ drop-in later), with **S3-compatible** object storage and **pgvector** in the sa
 tenancy as **User → Membership(role) → Workspace**, with an **Organization** wrapping workspaces
 for company groups. Enforce isolation three times: **sync rules** gate what flows *down* to
 devices, **FastAPI** gates every write flowing *up*, and `tenant_id` + **RLS** backstop both in the
-database. Use **Clerk** for orgs/auth (its JWTs double as sync-engine credentials) and add the
-public-SaaS essentials (email, Stripe, backups, export, rate limiting) as you go.
+database. Use **better-auth** for orgs/auth — self-hosted on the same Postgres, its JWTs double as
+sync-engine credentials via JWKS — and add the public-SaaS essentials (email, Stripe, backups,
+export, rate limiting) as you go.
 
 ## Sources
 

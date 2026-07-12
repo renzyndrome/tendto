@@ -24,7 +24,7 @@ writes (FastAPI validates everything into Postgres) + a bought sync engine (Powe
 | **Database** | **Postgres** — **Supabase** to launch (first-class PowerSync pairing; Neon/managed later) | Source of truth; RLS multi-tenancy (doc 05) |
 | **Vector search** | **pgvector** (same Postgres); local SQLite **FTS** for instant search | Semantic later, instant now (doc 03, 06) |
 | **Object storage** | **S3-compatible** (MinIO self-host / cloud bucket) | Images, attachments |
-| **Auth** | **Clerk** (Organizations + invites); its JWTs also authenticate the sync client. WorkOS later for enterprise SSO | Personal-vs-company solved (doc 05) |
+| **Auth** | **better-auth** (self-hosted, organization + JWT plugins) as a tiny Node auth service on *our* Postgres; its JWTs (verified via its JWKS endpoint) authenticate FastAPI **and** the sync client. WorkOS later for enterprise SSO | Orgs/invites without per-user/per-org pricing; zero auth vendor cost at scale (doc 05) |
 | **Desktop shell** | **None at launch — the PWA.** Tauri 2 wrapper later *if earned* (native SQLite durability is the real rationale) | Packaging, not architecture (doc 04) |
 | **Mobile shell** | **None at launch — the responsive PWA.** Capacitor or RN + Expo later *if earned* (PowerSync has SDKs for both). **Not Flutter** | Decide on real pain (doc 04) |
 | **Conflicts** | Block/row granularity; **last-write-wins** + "updated elsewhere" notice; Yjs **per page** only if live co-editing is ever earned | The honest trade (doc 02 §A) |
@@ -42,7 +42,7 @@ Each phase has a clear "done." Infra comes online exactly when the product needs
 | Phase | Product milestone | Infra / stack added | AI |
 | --- | --- | --- | --- |
 | **0 — Prove the sync loop** *(throwaway spike)* | Instant local editing; edit appears on a second device in ~1s; **offline edit merges cleanly on reconnect** | BlockNote + PowerSync (cloud) + FastAPI upload endpoint + Postgres | — |
-| **1 — MVP: instant tasks everywhere** | WYSIWYG editor, notes-by-category, simple to-dos; **responsive PWA on laptop + phone**; **instant + offline + synced, all structural** | **Supabase Postgres**, **Clerk** auth (JWT → sync engine), sync rules, deployed API | — |
+| **1 — MVP: instant tasks everywhere** | WYSIWYG editor, notes-by-category, simple to-dos; **responsive PWA on laptop + phone**; **instant + offline + synced, all structural** | **Supabase Postgres**, **better-auth** service (JWT/JWKS → API + sync engine), sync rules, deployed API | — |
 | **2 — Collections & collaboration** | **Checklist / list / table / board (kanban)**; startup task workflow; **shared workspaces + roles** (sync rules ↓, FastAPI ↑); live teammate updates + presence; **comments & @mentions**; templates | Invitations, memberships, RLS hardening, presence channel | — |
 | **3 — Organize + intelligence** | **Calendar** + **unified calendar** (instant local query); **instant search** (SQLite FTS); export + self-host path | Sync hardening (long-offline, conflicts); backup/restore drill; **pgvector**; SSE streaming | **Daily summary** + **per-page summarize** + inline AI (BYO/self-host model option) |
 | **4 — Shells & earned extras** | Native shells *if earned* (Tauri wrapper — durable native SQLite; mobile per doc 04); nice-to-haves one at a time (incl. per-page Yjs co-editing *if earned*) | Optional shells | **TendTo MCP server**; semantic Q&A |

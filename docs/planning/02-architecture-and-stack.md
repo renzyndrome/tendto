@@ -46,6 +46,14 @@ SQLite in any future desktop/mobile shell — one storage story on every platfor
 with writes through your API by design, but rougher production edges as of early 2026. The
 architecture below fits either; naming one avoids re-litigating it every sprint.
 
+**Re-evaluated 2026-07** (when auth was redesigned off Clerk): PowerSync stays. It's the only
+engine in the field that passes the hard offline requirement out of the box — Electric is
+read-path only (no offline write queue; it also repositioned toward agent workloads), Zero 1.0
+explicitly rejects offline writes, Replicache is archived, and TanStack DB's offline-transactions
+layer is young and still DIY assembly. PowerSync is also **auth-agnostic**: the service verifies
+any JWT against a configured JWKS URL (EdDSA/RS256/ES256), so the auth swap to better-auth needed
+config, not a new engine. Self-hosting is free (FSL Open Edition; client SDKs Apache/MIT).
+
 ### How sync actually works (the whole model)
 
 ```
@@ -78,9 +86,10 @@ architecture below fits either; naming one avoids re-litigating it every sprint.
 
 ### The trade-offs, stated honestly
 
-- **One more moving part:** the PowerSync service (managed cloud or self-hosted container) sits
-  next to FastAPI. Cost of buying sync instead of building it — far cheaper than owning a CRDT
-  substrate.
+- **Two more moving parts:** the PowerSync service (managed cloud or self-hosted container) and
+  the better-auth service sit next to FastAPI. Cost of buying sync and auth instead of building
+  them — far cheaper than owning a CRDT substrate or a hand-rolled auth system, and neither
+  carries per-user pricing when self-hosted.
 - **Engine dependency:** mitigated by the exit ramp — data is plain rows in *your* Postgres and
   plain SQLite on device; swapping engines (or falling back to cloud-first REST) doesn't change the
   schema or the FastAPI write path.
@@ -109,7 +118,7 @@ to disable. (Details: doc 06.)
 
 ## B. The stack
 
-### The shape: one web app, one API, one sync service
+### The shape: one web app, one API, one sync service, one auth service
 
 ```
         ┌───────────────────────────────────────────────┐
@@ -117,17 +126,27 @@ to disable. (Details: doc 06.)
         │  reads/writes local SQLite (PowerSync client)  │
         │  — responsive web app / installable PWA —      │
         └───────────────────────────────────────────────┘
-              │ upload queue                ▲ sync stream
-        ┌─────┴─────────────┐      ┌────────┴──────────┐
-        │  FastAPI          │      │ PowerSync service │
-        │  (validation,     │      │ (managed or       │
-        │   permissions,    │      │  self-hosted)     │
-        │   AI summary job) │      └────────┬──────────┘
-        └─────┬─────────────┘               │ logical replication
-              └────────►  Postgres  ◄───────┘
-                     (+ pgvector)      S3-compatible store
-                     source of truth   images & attachments
+    session /   │ upload queue                ▲ sync stream
+    JWT ▼       │                             │
+ ┌───────────┐  │                             │   JWKS (verify JWTs)
+ │better-auth│◄─┼─────────────────────────────┼──────────────┐
+ │ (Bun,     │  │                             │              │
+ │ tiny)     │  ▼                             │              │
+ └─────┬─────┘ ┌───────────────────┐  ┌───────┴───────────┐  │
+       │       │  FastAPI          │  │ PowerSync service │──┘
+       │       │  (validation,     │  │ (managed or       │
+       │       │   permissions,    │  │  self-hosted)     │
+       │       │   AI summary job) │  └────────┬──────────┘
+       │       └─────┬─────────────┘           │ logical replication
+       └─────────────┴──────►  Postgres  ◄─────┘
+                          (+ pgvector)      S3-compatible store
+                          source of truth   images & attachments
 ```
+
+The auth service is **infrastructure, not product code** — like the PowerSync container, it's a
+self-contained commodity process (better-auth on Hono, ~50 lines of config) whose tables live in
+the *same* Postgres. All product logic stays in FastAPI; the "all-Python server" principle now
+reads precisely: **FastAPI is the only place business logic lives.**
 
 ### Layer-by-layer
 
@@ -143,7 +162,7 @@ to disable. (Details: doc 06.)
 | **API** | **FastAPI** | The authoritative write path (`uploadData` target), permissions, tenancy, scheduled jobs — your strongest language owns the server. |
 | **Sync service** | **PowerSync** (cloud to start; self-host container for the no-lock-in story) | Buys the hardest 20% of the product. |
 | **Database** | **Postgres** (Supabase to start — PowerSync has first-class Supabase integration) + **pgvector** | Source of truth; RLS multi-tenancy (doc 05). |
-| **Auth** | **Clerk** (doc 05); PowerSync authenticates clients via JWT | Orgs/invites out of the box. |
+| **Auth** | **better-auth** (self-hosted; doc 05) — organization plugin for orgs/invites/roles, JWT plugin for tokens; FastAPI *and* PowerSync verify against its JWKS endpoint | Orgs/invites without per-user pricing; auth data in our own Postgres; the one (deliberate) JS-runtime process (Bun). |
 | **Object storage** | **S3-compatible** (MinIO self-hosted, or a cloud bucket) | Images, attachments. |
 
 ### The data model (relational, one primitive — unchanged by the sync engine)
