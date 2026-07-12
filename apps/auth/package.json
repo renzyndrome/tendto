@@ -1,0 +1,22 @@
+{
+  "name": "tendto-auth",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --env-file=../../.env --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "migrate": "bun --env-file=../../.env x @better-auth/cli migrate"
+  },
+  "dependencies": {
+    "better-auth": "latest",
+    "hono": "latest",
+    "pg": "latest"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/pg": "latest",
+    "typescript": "~5.6.0"
+  }
+}
