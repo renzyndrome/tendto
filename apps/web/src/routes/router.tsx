@@ -1,26 +1,23 @@
 /** TanStack Router — client-side SPA routing (deliberately NOT TanStack Start; see docs 02). */
-import {
-  createRootRoute,
-  createRoute,
-  createRouter,
-  Outlet,
-} from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 
+import { CalendarView } from "../components/calendar/calendar-view";
+import { CollectionView } from "../components/collection/collection-view";
 import { PageEditor } from "../components/editor/page-editor";
+import { AppShell } from "../components/layout/app-shell";
 
-const rootRoute = createRootRoute({
-  component: () => (
-    <div className="min-h-screen">
-      {/* sidebar goes here */}
-      <Outlet />
-    </div>
-  ),
-});
+const rootRoute = createRootRoute({ component: AppShell });
 
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
-  component: () => <p className="p-6">TendTo — select or create a page.</p>,
+  component: function IndexRoute() {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-sm text-neutral-400">Select a page, or create a new one.</p>
+      </div>
+    );
+  },
 });
 
 const pageRoute = createRoute({
@@ -32,7 +29,27 @@ const pageRoute = createRoute({
   },
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, pageRoute]);
+const collectionRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/c/$collectionId",
+  component: function CollectionRoute() {
+    const { collectionId } = collectionRoute.useParams();
+    return <CollectionView collectionId={collectionId} />;
+  },
+});
+
+const calendarRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/calendar",
+  component: CalendarView,
+});
+
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  pageRoute,
+  collectionRoute,
+  calendarRoute,
+]);
 
 export const router = createRouter({ routeTree });
 

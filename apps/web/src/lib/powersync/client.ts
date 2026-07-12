@@ -1,6 +1,6 @@
 /**
  * PowerSync client setup: local SQLite database + the connector that
- * (a) supplies the Clerk JWT for the sync stream, and
+ * (a) supplies the better-auth JWT for the sync stream, and
  * (b) uploads queued writes to FastAPI — the authoritative write path.
  */
 import {
@@ -10,6 +10,7 @@ import {
 } from "@powersync/web";
 
 import { apiFetch } from "../api/client";
+import { getAuthToken } from "../auth/token";
 import { AppSchema } from "./schema";
 
 export const db = new PowerSyncDatabase({
@@ -19,9 +20,13 @@ export const db = new PowerSyncDatabase({
 
 class Connector implements PowerSyncBackendConnector {
   async fetchCredentials() {
-    // TODO(phase-0): get a Clerk JWT (template with audience "powersync")
-    // const token = await window.Clerk?.session?.getToken({ template: "powersync" });
-    const token = "";
+    // The same better-auth JWT that authenticates FastAPI also authenticates the sync stream.
+    // PowerSync re-calls this before the token expires and verifies it against the auth
+    // service's JWKS (see infra/powersync/config.yaml).
+    const token = await getAuthToken();
+    // No valid session yet (or offline with no cached token): return null so PowerSync waits
+    // and retries rather than opening the stream with an empty token.
+    if (!token) return null;
     return {
       endpoint: import.meta.env.VITE_POWERSYNC_URL as string,
       token,
