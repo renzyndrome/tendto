@@ -109,6 +109,16 @@ daily recap each evening.
 
 **Done means:** anything added since Phase 3 has earned its place.
 
+> **Status (2026-07-13):** the desktop shell was *earned* by a user request and scaffolded —
+> `apps/desktop/` is a Tauri 2.11 shell (tray, native notifications wired to the focus timer,
+> single-instance, window-state) loading the web bundle. Rust enters here. **Phase A is
+> scaffolded but not compile-verified** (the sandbox lacks Rust + WebKitGTK dev libs + sudo); the
+> **WebKitGTK contenteditable/editor spike is the acceptance gate** and must run on a real machine.
+> **Phase B** (durable native SQLite via the alpha `tauri-plugin-powersync` + a Rust connector) is
+> written up in `docs/desktop.md`, clearly marked alpha. Also shipped since Phase 3: **focus mode**
+> (Pomodoro + in-session tasks), **custom kanban columns**, editable kanban cards, inline images,
+> page titles/nesting/delete — each behind the clutter test, each E2E-gated.
+
 ---
 
 ## What we are deliberately NOT building (guardrails)

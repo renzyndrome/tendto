@@ -31,6 +31,9 @@ decisions (sync model, stack, TanStack Router-not-Start, no Flutter) without bei
   (Supabase in cloud, plain Postgres in docker for dev), better-auth JWT verification (JWKS).
 - **apps/auth**: better-auth on Hono + Bun (dev :13001) — sessions, organizations/invites, JWT + JWKS.
   Infrastructure only: no business logic goes here; FastAPI stays the only product server.
+- **apps/desktop**: Tauri 2 shell (Rust) loading the `apps/web` bundle — durable native SQLite,
+  tray, native notifications. Phase A scaffolded (stable); Phase B (native PowerSync, alpha) is a
+  guide in `docs/desktop.md`. NOT built in CI/sandbox (needs Rust + WebKitGTK dev libs). Optional.
 - **infra**: docker compose (postgres + powersync service), `infra/powersync/sync-rules.yaml`.
 
 ## Commands

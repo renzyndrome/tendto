@@ -4,6 +4,7 @@
  */
 import { useEffect, useReducer, useState } from "react";
 
+import { notifyPhaseEnded } from "../../lib/desktop/notify";
 import { remainingSeconds, useFocusStore } from "../../stores/focus";
 
 function mmss(total: number): string {
@@ -28,7 +29,12 @@ export function FocusView() {
 
   // Advance to the next phase when the countdown reaches zero.
   useEffect(() => {
-    if (store.running && remaining <= 0) store.completePhase();
+    if (store.running && remaining <= 0) {
+      // Fire a native OS notification on the desktop shell (no-op in the browser). Capture the
+      // phase that just ended before completePhase() flips it.
+      void notifyPhaseEnded(store.phase);
+      store.completePhase();
+    }
   }, [store, remaining]);
 
   const remainingTasks = store.tasks.filter((t) => !t.done).length;

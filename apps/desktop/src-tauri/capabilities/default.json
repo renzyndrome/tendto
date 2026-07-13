@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Core, notification and window-state permissions for the main window.",
+  "windows": ["main"],
+  "permissions": ["core:default", "notification:default", "window-state:default"]
+}

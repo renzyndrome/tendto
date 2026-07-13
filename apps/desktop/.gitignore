@@ -1,0 +1,11 @@
+# Rust / Cargo build output
+src-tauri/target/
+
+# Tauri CLI generated (regenerated on build; holds the capabilities schema — do not commit)
+src-tauri/gen/
+
+# Generated app icons (produced by `tauri icon <logo.png>`) — regenerate rather than commit
+src-tauri/icons/
+
+# node
+node_modules/

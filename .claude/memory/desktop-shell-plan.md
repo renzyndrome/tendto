@@ -33,3 +33,15 @@ Build shape when started: `apps/desktop` (Tauri 2) loading the existing Vite bun
 bundle was chosen for exactly this). Phase A: shell + tray/notifications + WebKitGTK editor
 spike. Phase B: `tauri-plugin-powersync` + Rust connector (fetchCredentials → better-auth token;
 uploadData → FastAPI /sync/upload). Pin alpha versions; expect churn.
+
+**Built 2026-07-13 (Phase A scaffold + Phase B guide):** `apps/desktop/` is scaffolded — stable
+Tauri 2.11 shell (tray, single-instance, window-state, native-notification command) loading the
+web bundle; plus a browser-safe notification bridge in `apps/web`
+(`src/lib/desktop/notify.ts` via `window.__TAURI_INTERNALS__`, no new web deps) that the focus
+timer calls on phase end. **The Rust is NOT compile-verified** (this sandbox has no Rust toolchain,
+no libwebkit2gtk-4.1-dev, no sudo) — only the web-side bridge is (typecheck + E2E green). Phase B
+(alpha `tauri-plugin-powersync` native SQLite + Rust connector + the `@powersync/web`→native JS
+branch + the unsolved better-auth-token-refresh-in-Rust problem) is fully written up in
+`docs/desktop.md`, every uncertain line tagged `TODO(verify-on-machine)`. The **WebKitGTK
+contenteditable/editor spike is the acceptance gate** and can only run on a real machine (see
+docs/desktop.md). Highest Phase-B risk: legacy `sync-rules.yaml` vs Sync Streams — test first.
