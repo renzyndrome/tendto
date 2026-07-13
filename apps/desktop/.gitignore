@@ -4,8 +4,8 @@ src-tauri/target/
 # Tauri CLI generated (regenerated on build; holds the capabilities schema — do not commit)
 src-tauri/gen/
 
-# Generated app icons (produced by `tauri icon <logo.png>`) — regenerate rather than commit
-src-tauri/icons/
+# NOTE: src-tauri/icons/ holds committed PLACEHOLDER icons so the app runs with no logo.
+# Replace them anytime with `tauri icon <your-logo.png>` (regenerates this folder in place).
 
 # node
 node_modules/

@@ -37,11 +37,15 @@ build error demands it: `sudo apt install patchelf libgtk-3-dev libsoup-3.0-dev`
 curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh   # default stable
 ```
 
-### 3. Install + generate icons
+### 3. Install (icons are already committed)
 ```bash
 cd apps/desktop
 npm install                              # @tauri-apps/cli + api
-npx tauri icon path/to/tendto-logo.png   # generates src-tauri/icons/* (REQUIRED before the tray runs)
+```
+Placeholder icons ship in `src-tauri/icons/` (a dark rounded square with a "T"), so the app runs
+with **no logo needed**. When you have a real logo, replace them in place:
+```bash
+npx tauri icon path/to/your-logo.png     # square PNG, ideally 1024×1024
 ```
 
 ### 4. Dev / build

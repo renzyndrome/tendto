@@ -73,9 +73,7 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
-    TrayIconBuilder::with_id("main-tray")
-        // Reuses bundle.icon; run `tauri icon <logo.png>` first, or this unwrap panics.
-        .icon(app.default_window_icon().unwrap().clone())
+    let mut tray = TrayIconBuilder::with_id("main-tray")
         .tooltip("TendTo")
         .menu(&menu)
         .show_menu_on_left_click(false)
@@ -93,8 +91,14 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
             {
                 focus_main_window(tray.app_handle());
             }
-        })
-        .build(app)?;
+        });
+
+    // Use the embedded app icon (the committed placeholder set under src-tauri/icons/, or your own
+    // after `tauri icon <logo.png>`). Set it only if present so a missing icon can't panic startup.
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+    tray.build(app)?;
 
     Ok(())
 }
