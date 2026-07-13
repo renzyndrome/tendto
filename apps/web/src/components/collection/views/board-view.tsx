@@ -147,6 +147,7 @@ export function BoardView({ items, workspaceId, collectionId, columns }: BoardVi
 
 function BoardCard({ row, onDragStart }: { row: ItemRow; onDragStart: () => void }) {
   const props = parseProperties(row);
+  const [open, setOpen] = useState(false);
   return (
     <div
       draggable
@@ -154,13 +155,21 @@ function BoardCard({ row, onDragStart }: { row: ItemRow; onDragStart: () => void
       data-testid="board-card"
       className="group cursor-grab rounded-md border border-neutral-200 bg-white p-2 shadow-sm"
     >
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-start justify-between gap-1">
         <InlineText
           value={props.title}
           onCommit={(title) => void patchItem(row, { title })}
           placeholder="Untitled"
           className="flex-1 bg-transparent text-sm text-neutral-800 outline-none placeholder:text-neutral-300"
         />
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-label={open ? "Hide card details" : "Edit card details"}
+          className="shrink-0 text-neutral-300 hover:text-neutral-700"
+        >
+          {open ? "▴" : "▾"}
+        </button>
         <button
           type="button"
           onClick={() => void deleteItem(row.id)}
@@ -170,7 +179,34 @@ function BoardCard({ row, onDragStart }: { row: ItemRow; onDragStart: () => void
           ×
         </button>
       </div>
-      {props.due ? <div className="mt-1 text-xs text-neutral-400">Due {props.due}</div> : null}
+
+      {!open && props.due ? (
+        <div className="mt-1 text-xs text-neutral-400">Due {props.due}</div>
+      ) : null}
+
+      {open ? (
+        <div className="mt-2 space-y-1.5 border-t border-neutral-100 pt-2">
+          <label className="flex items-center gap-2 text-xs text-neutral-500">
+            <span className="w-14 shrink-0">Due</span>
+            <input
+              type="date"
+              value={props.due ?? ""}
+              onChange={(e) => void patchItem(row, { due: e.target.value })}
+              aria-label="Card due date"
+              className="flex-1 rounded border border-neutral-200 px-1.5 py-0.5 text-xs text-neutral-700"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-xs text-neutral-500">
+            <span className="w-14 shrink-0">Assignee</span>
+            <InlineText
+              value={props.assignee ?? ""}
+              onCommit={(assignee) => void patchItem(row, { assignee })}
+              placeholder="—"
+              className="flex-1 rounded border border-neutral-200 bg-white px-1.5 py-0.5 text-xs text-neutral-700 outline-none placeholder:text-neutral-300"
+            />
+          </label>
+        </div>
+      ) : null}
     </div>
   );
 }

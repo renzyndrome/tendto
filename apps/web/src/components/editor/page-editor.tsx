@@ -23,6 +23,22 @@ import { Spinner } from "../ui/spinner";
 
 const SAVE_DEBOUNCE_MS = 500;
 const TITLE_DEBOUNCE_MS = 400;
+// Inline images are stored as data URLs in the block content (offline-friendly, syncs as text).
+// Capped so a huge paste can't bloat the replica; real object storage is a later upgrade.
+const MAX_INLINE_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/** BlockNote uploadFile handler: read a pasted/dropped/picked image into a data URL. */
+async function uploadInlineFile(file: File): Promise<string> {
+  if (file.size > MAX_INLINE_IMAGE_BYTES) {
+    throw new Error("Image too large (max 5MB until file storage is added).");
+  }
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error ?? new Error("Could not read file"));
+    reader.readAsDataURL(file);
+  });
+}
 
 interface Loaded {
   blocks: BlockRow[];
@@ -78,7 +94,7 @@ function PageEditorInner({ pageId, initialBlocks, initialTitle }: PageEditorInne
     () => (initialBlocks.length > 0 ? initialBlocks.map(rowToBlock) : undefined),
     [initialBlocks],
   );
-  const editor = useCreateBlockNote({ initialContent });
+  const editor = useCreateBlockNote({ initialContent, uploadFile: uploadInlineFile });
 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dirty = useRef(false);
