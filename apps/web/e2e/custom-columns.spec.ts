@@ -9,15 +9,16 @@ test.describe("custom kanban columns", () => {
     authedPage: page,
   }) => {
     await page.getByRole("button", { name: "New collection" }).click();
+    await page.getByRole("button", { name: "Task board" }).click();
 
     const columns = page.locator('[data-testid^="board-col-"]');
-    await expect(columns).toHaveCount(3); // defaults: To do / In progress / Done
+    await expect(columns).toHaveCount(3); // Task board: To do / In progress / Done
 
     // Add a column (appended last) and rename it.
     await page.getByRole("button", { name: "Add column" }).click();
     await expect(columns).toHaveCount(4);
     const newColLabel = columns.last().getByRole("textbox").first();
-    await expect(newColLabel).toHaveValue("New column");
+    await expect(newColLabel).toHaveValue(""); // a new column starts empty (placeholder "Column")
     await newColLabel.fill("Review");
     await newColLabel.blur();
     await page.waitForTimeout(800); // persist config

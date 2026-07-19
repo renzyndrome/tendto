@@ -23,7 +23,9 @@ test.describe("auth", () => {
     // Lands in the app: workspace bootstrapped + synced ⇒ the sidebar renders.
     await expect(page.getByRole("button", { name: "New page" })).toBeVisible({ timeout: 30_000 });
 
-    // Sign out → back to the auth screen.
+    // Sign out lives in Settings → Account now → back to the auth screen.
+    await page.getByRole("button", { name: "Settings" }).click();
+    await page.getByRole("button", { name: "Account" }).click();
     await page.getByRole("button", { name: "Sign out" }).click();
     await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
 

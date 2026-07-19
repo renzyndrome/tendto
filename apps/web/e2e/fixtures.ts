@@ -1,6 +1,7 @@
 import { test as base, expect, type Page } from "@playwright/test";
 
 import { makeUser, type TestUser } from "./helpers/data";
+import { seedOnboardingComplete } from "./helpers/onboarding";
 
 /**
  * `authedPage` fixture: signs up a FRESH user via the better-auth API (setting the session cookie
@@ -17,6 +18,12 @@ interface Fixtures {
 }
 
 export const test = base.extend<Fixtures>({
+  // Seed first-run onboarding as complete so its welcome-dialog modal never intercepts the sidebar
+  // clicks every spec relies on. Runs before any app script on every navigation in the context.
+  page: async ({ page }, use) => {
+    await seedOnboardingComplete(page);
+    await use(page);
+  },
   user: async ({}, use) => {
     await use(makeUser());
   },

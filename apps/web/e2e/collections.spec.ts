@@ -34,7 +34,7 @@ test.describe("collections", () => {
 
   test("board: drag a card from To do to Done (persists)", async ({ authedPage: page }) => {
     await page.getByRole("button", { name: "New collection" }).click();
-    // New collection defaults to the board view.
+    await page.getByRole("button", { name: "Task board" }).click(); // To do / In progress / Done
     const todo = page.getByTestId("board-col-todo");
     const done = page.getByTestId("board-col-done");
     await todo.getByRole("button", { name: "+ Add card" }).click();

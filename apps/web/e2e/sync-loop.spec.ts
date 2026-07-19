@@ -1,5 +1,6 @@
 import { expect, test } from "./fixtures";
 import { signInAs } from "./helpers/api";
+import { seedOnboardingComplete } from "./helpers/onboarding";
 
 /**
  * Phase 1 — the crown jewel: the whole local-first loop.
@@ -38,6 +39,7 @@ test.describe("sync loop", () => {
       expect(res.ok(), `device-2 sign-in failed: ${res.status()}`).toBeTruthy();
 
       const page2 = await device2.newPage();
+      await seedOnboardingComplete(page2); // second device also skips the welcome modal
       await page2.goto("/");
       // The page created on device 1 shows up in device 2's sidebar via sync…
       await page2.getByRole("button", { name: "Untitled" }).first().click();

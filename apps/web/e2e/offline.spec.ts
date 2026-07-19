@@ -1,5 +1,6 @@
 import { expect, test } from "./fixtures";
 import { signInAs } from "./helpers/api";
+import { seedOnboardingComplete } from "./helpers/onboarding";
 
 /**
  * Phase 1 — offline-first. Edit while the browser is offline (writes queue in the local replica),
@@ -34,6 +35,7 @@ test.describe("offline", () => {
     try {
       expect((await signInAs(device2.request, user.email, user.password)).ok()).toBeTruthy();
       const page2 = await device2.newPage();
+      await seedOnboardingComplete(page2); // second device also skips the welcome modal
       await page2.goto("/");
       await page2.getByRole("button", { name: "Untitled" }).first().click();
       await expect(page2.locator('[contenteditable="true"]').first()).toContainText(marker, {

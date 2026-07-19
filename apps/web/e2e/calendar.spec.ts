@@ -21,6 +21,7 @@ test.describe("calendar", () => {
 
     // Create an item with a title + a due date via the table view.
     await page.getByRole("button", { name: "New collection" }).click();
+    await page.getByRole("button", { name: "Task board" }).click();
     await page.getByRole("button", { name: "Table" }).click();
     await page.getByRole("button", { name: "+ New item" }).click();
     const table = page.getByTestId("table");

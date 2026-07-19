@@ -1,40 +1,51 @@
 import { expect, test } from "./fixtures";
 
 /**
- * Solo use — edit a kanban card's due date + assignee directly on the board (expand the card),
- * not only in the Table view. Values persist across reload and show up in the table.
+ * Task detail modal — open a kanban card, edit its due date, description, and assign a member,
+ * then confirm it persists across reload and the same item shows in the Table view (one primitive,
+ * many views).
  */
-test.describe("board card editing", () => {
-  test("set a card's due date and assignee on the board (persists, shows in table)", async ({
+test.describe("task detail modal", () => {
+  test("edit due date, description, and assignee; persists and shows across views", async ({
     authedPage: page,
   }) => {
-    await page.getByRole("button", { name: "New collection" }).click(); // defaults to board
+    await page.getByRole("button", { name: "New collection" }).click();
+    await page.getByRole("button", { name: "Task board" }).click(); // To do / In progress / Done
     const todo = page.getByTestId("board-col-todo");
     await todo.getByRole("button", { name: "+ Add card" }).click();
 
-    const card = todo.getByTestId("board-card").first();
-    await card.getByRole("button", { name: "Edit card details" }).click();
-    await card.getByLabel("Card due date").fill("2026-07-20");
-    const assignee = card.getByPlaceholder("—");
-    await assignee.fill("Alex");
-    await assignee.blur();
-    // Confirm both landed in the open card (gates on the debounced/immediate writes) before reload.
-    await expect(card.getByLabel("Card due date")).toHaveValue("2026-07-20");
-    await expect(assignee).toHaveValue("Alex");
-    await page.waitForTimeout(1200);
+    // Open the card's detail modal.
+    await todo.getByTestId("board-card").first().click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
 
-    // Persists across reload (collection still opens on the board).
+    // Title + due + description.
+    await dialog.getByLabel("Task title").fill("Ship the thing");
+    await dialog.getByLabel("Due date").fill("2026-07-20");
+    await dialog.getByLabel("Task description").fill("with all the details");
+
+    // Assign a member (solo workspace → just the current user). Members load from the API.
+    await dialog.getByRole("button", { name: "Assign members" }).click();
+    await dialog.getByTestId("member-option").first().click({ timeout: 15_000 });
+    await expect(dialog.getByTestId("assignee-chip")).toHaveCount(1);
+
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await page.waitForTimeout(1200); // persist to the replica
+
+    // Persists across reload: reopen the card and check the fields.
     await page.reload();
     const reopened = page.getByTestId("board-col-todo").getByTestId("board-card").first();
     await expect(reopened).toBeVisible({ timeout: 20_000 });
-    await reopened.getByRole("button", { name: "Edit card details" }).click();
-    await expect(reopened.getByLabel("Card due date")).toHaveValue("2026-07-20");
-    await expect(reopened.getByPlaceholder("—")).toHaveValue("Alex");
+    await reopened.click();
+    const dialog2 = page.getByRole("dialog");
+    await expect(dialog2.getByLabel("Due date")).toHaveValue("2026-07-20");
+    await expect(dialog2.getByLabel("Task description")).toHaveValue("with all the details");
+    await expect(dialog2.getByTestId("assignee-chip")).toHaveCount(1);
+    await dialog2.getByRole("button", { name: "Close" }).click();
 
-    // Same values in the Table view (one primitive, many views).
+    // Same due date in the Table view.
     await page.getByRole("button", { name: "Table" }).click();
     const table = page.getByTestId("table");
     await expect(table.locator('input[type="date"]').first()).toHaveValue("2026-07-20");
-    await expect(table.getByPlaceholder("—")).toHaveValue("Alex");
   });
 });

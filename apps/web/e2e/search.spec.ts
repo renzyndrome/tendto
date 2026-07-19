@@ -23,7 +23,13 @@ test.describe("search", () => {
     const dialog = page.getByRole("dialog", { name: "Search" });
     await dialog.getByPlaceholder("Search pages, items, blocks…").fill(marker);
 
-    const hit = dialog.getByText(marker).first();
+    // Click the actual search result, not the "Create page <query>" fallback row (which also
+    // contains the marker text and renders immediately).
+    const hit = dialog
+      .getByRole("button")
+      .filter({ hasText: marker })
+      .filter({ hasNotText: "Create page" })
+      .first();
     await expect(hit).toBeVisible({ timeout: 10_000 });
     await hit.click();
 

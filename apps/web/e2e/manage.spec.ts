@@ -26,6 +26,7 @@ test.describe("manage pages & collections", () => {
     page.on("dialog", (d) => void d.accept());
 
     await page.getByRole("button", { name: "New collection" }).click();
+    await page.getByRole("button", { name: "Blank board" }).click();
     const link = page.getByRole("button", { name: "Untitled", exact: true });
     await expect(link).toBeVisible();
     await link.hover();
@@ -43,11 +44,11 @@ test.describe("manage pages & collections", () => {
     await page.waitForTimeout(900);
 
     // Add a subpage under the parent (navigates to the new child), then name it. Wait for the
-    // navigation to land (the title resets to the new page's "Untitled") before typing, so we
-    // don't rename the parent by mistake.
+    // navigation to land (a new page has an EMPTY title — "Untitled" is only the placeholder)
+    // before typing, so we don't rename the parent by mistake.
     await page.getByRole("button", { name: parent }).hover();
     await page.getByRole("button", { name: "Add subpage" }).click();
-    await expect(page.getByTestId("page-title")).toHaveValue("Untitled");
+    await expect(page.getByTestId("page-title")).toHaveValue("");
     await page.getByTestId("page-title").fill(child);
     await page.waitForTimeout(900);
 

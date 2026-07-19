@@ -19,9 +19,13 @@ test.describe("export", () => {
     await editor.pressSequentially(marker);
     await page.waitForTimeout(1500); // persist to the replica (export reads the replica)
 
+    // Export lives in Settings → Import / export now.
+    await page.getByRole("button", { name: "Settings" }).click();
+    await page.getByRole("button", { name: "Import / export" }).click();
+
     const downloads: Download[] = [];
     page.on("download", (d) => downloads.push(d));
-    await page.getByRole("button", { name: "Export" }).click();
+    await page.getByRole("button", { name: "Export workspace" }).click();
 
     await expect.poll(() => downloads.length, { timeout: 15_000 }).toBeGreaterThanOrEqual(2);
     const names = downloads.map((d) => d.suggestedFilename());
