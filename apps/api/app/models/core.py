@@ -106,3 +106,29 @@ class Item(TimestampMixin, Base):
     properties: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     # e.g. {"title": "...", "done": false, "status": "todo", "due": "2026-07-10", ...}
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class Invite(TimestampMixin, Base):
+    """A shareable workspace invitation — server-only (never synced to devices).
+
+    Redeemed by token: POST /invites/{token}/accept creates the membership. `email` is an
+    optional hint for the invite list UI; redemption is by whoever holds the link (email
+    delivery is a later upgrade — see docs/planning/05). Single-use: `accepted_by` marks it
+    spent. Row-level `expires_at` keeps stale links from living forever.
+    """
+
+    __tablename__ = "invites"
+    __table_args__ = (Index("ix_invites_workspace", "workspace_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    role: Mapped[str] = mapped_column(String(16), nullable=False, default="editor")
+    # invitable roles: editor | viewer (owner is never granted by link)
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(64), nullable=False)  # better-auth user id
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    accepted_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -13,10 +13,19 @@ from sqlalchemy.pool import NullPool
 
 from app.models.core import Membership, Page, Workspace
 
+# The tests TRUNCATE every table before each run, so they MUST target a throwaway database, never
+# the dev/prod DB. Read a dedicated TEST_DATABASE_URL (NOT the app's DATABASE_URL, which points at
+# real data) and default to a separate `tendto_test` database. See the guard in conftest.py.
 TEST_DATABASE_URL = os.environ.get(
-    "DATABASE_URL", "postgresql+asyncpg://tendto:tendto@localhost:15432/tendto"
+    "TEST_DATABASE_URL", "postgresql+asyncpg://tendto:tendto@localhost:15432/tendto_test"
 )
 TEST_USER_ID = "user_test_1"
+
+
+def database_name(url: str) -> str:
+    """The database name from a SQLAlchemy URL (the part after the last '/', minus any query)."""
+    return url.rsplit("/", 1)[-1].split("?", 1)[0]
+
 
 # NullPool: the app request (run via httpx's ASGI transport) and the test share one event
 # loop, but a pooled asyncpg connection must never straddle loops — NullPool sidesteps it.

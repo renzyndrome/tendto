@@ -21,15 +21,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import CurrentUser, get_current_user
 from app.db import get_session
-from app.models.core import Block, Collection, Item, Membership, Page, Workspace
+from app.models.core import Block, Collection, Item, Membership, Page
 from app.schemas.sync import CrudEntry, Op, UploadBatch, UploadResult
 
 router = APIRouter(prefix="/sync", tags=["sync"])
 
 # table name -> mapped model. Also the set of tables the upload path will accept.
+#
+# `workspaces` and `memberships` are DELIBERATELY excluded: they're tenancy/authorization rows,
+# created only by server endpoints (POST /bootstrap, POST /workspaces/invites/{token}/accept)
+# behind owner/role checks. They still DOWNLOAD to devices (sync rules) for the sidebar/switcher,
+# but a client can never PUT one — otherwise an editor could forge a membership and self-promote
+# to owner through this generic write path.
 TABLE_MODELS = {
-    "workspaces": Workspace,
-    "memberships": Membership,
     "pages": Page,
     "blocks": Block,
     "collections": Collection,
@@ -96,10 +100,7 @@ async def _resolve_workspace_id(session: AsyncSession, entry: CrudEntry) -> Any 
     client-supplied one — so a client that knows a row's id can't authorize a write against
     a workspace it belongs to and thereby move the row across tenants (the actual relocation
     is separately blocked in `_apply_entry`). Only a brand-new row trusts `data`.
-    For `workspaces` the tenant key is the row id itself.
     """
-    if entry.table == "workspaces":
-        return entry.id
     model = TABLE_MODELS[entry.table]
     stored_workspace_id = await session.scalar(
         select(model.workspace_id).where(model.id == entry.id)

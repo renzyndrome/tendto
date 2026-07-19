@@ -16,7 +16,17 @@ from app.auth import CurrentUser, get_current_user
 from app.db import get_session
 from app.main import app
 from app.models import Base
-from app.tests.support import TEST_USER_ID, TestSession, engine
+from app.tests.support import TEST_DATABASE_URL, TEST_USER_ID, TestSession, database_name, engine
+
+# Safety net: these tests TRUNCATE every table. Refuse to run against anything that isn't an
+# obvious throwaway test database, so a stray DATABASE_URL can never nuke dev/prod data again.
+_DB_NAME = database_name(TEST_DATABASE_URL)
+if not _DB_NAME.endswith("_test"):
+    raise RuntimeError(
+        f"Refusing to run destructive tests against database '{_DB_NAME}'. "
+        "Point TEST_DATABASE_URL at a database whose name ends in '_test' "
+        "(default: tendto_test). NEVER the app's DATABASE_URL."
+    )
 
 
 @pytest_asyncio.fixture(autouse=True)
