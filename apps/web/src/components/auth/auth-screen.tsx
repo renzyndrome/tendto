@@ -52,15 +52,18 @@ export function AuthScreen() {
   }
 
   const inputClass =
-    "w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 " +
-    "placeholder:text-neutral-400 outline-none focus:border-neutral-900";
+    "w-full rounded-input border border-border-soft bg-surface px-3 py-2 text-sm text-ink " +
+    "placeholder:text-muted outline-none focus:border-accent";
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-neutral-50 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-canvas px-4">
       <div className="w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">TendTo</h1>
-          <p className="mt-1 text-sm text-neutral-500">
+        <div className="mb-8 flex flex-col items-center text-center">
+          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-[13px] bg-accent text-lg font-bold text-accent-contrast">
+            T
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-ink">TendTo</h1>
+          <p className="mt-1 text-sm text-muted">
             {isSignUp ? "Create your account" : "Welcome back"}
           </p>
         </div>
@@ -85,11 +88,11 @@ export function AuthScreen() {
             onChange={(e) => setPassword(e.target.value)}
             className={inputClass}
           />
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          {error ? <p className="text-sm text-overdue">{error}</p> : null}
           <button
             type="submit"
             disabled={submitting}
-            className="w-full rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50"
+            className="w-full rounded-input bg-accent px-3 py-2 text-sm font-medium text-accent-contrast transition hover:bg-accent-hover disabled:opacity-50"
           >
             {submitting ? "Please wait…" : isSignUp ? "Create account" : "Sign in"}
           </button>
@@ -101,7 +104,7 @@ export function AuthScreen() {
             setMode(isSignUp ? "sign-in" : "sign-up");
             setError(null);
           }}
-          className="mt-4 w-full text-center text-sm text-neutral-500 hover:text-neutral-900"
+          className="mt-4 w-full text-center text-sm text-muted hover:text-ink"
         >
           {isSignUp ? "Already have an account? Sign in" : "New here? Create an account"}
         </button>

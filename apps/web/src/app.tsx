@@ -17,6 +17,7 @@ import { FullScreenLoader } from "./components/ui/spinner";
 import { useSession } from "./lib/auth/client";
 import { bootstrapWorkspaces } from "./lib/bootstrap";
 import { connectDb } from "./lib/powersync/client";
+import { loadActiveWorkspaceId } from "./lib/workspaces";
 import { router } from "./routes/router";
 import { useUiStore } from "./stores/ui";
 
@@ -45,7 +46,10 @@ function AuthedApp() {
 
         const workspaceId = await bootstrapWorkspaces();
         if (cancelled) return;
-        if (workspaceId) setActiveWorkspace(workspaceId);
+        // Prefer the last workspace this device had open; the sidebar switcher self-heals if
+        // that workspace is no longer accessible (e.g. the user was removed).
+        const active = loadActiveWorkspaceId() ?? workspaceId;
+        if (active) setActiveWorkspace(active);
         setStatus("ready");
       } catch {
         if (!cancelled) setStatus("error");

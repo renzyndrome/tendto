@@ -24,7 +24,9 @@ export async function createPage(
   await db.execute(
     `INSERT INTO pages (id, workspace_id, parent_id, title, position, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [id, workspaceId, parentId, "Untitled", position, now, now],
+    // Empty title so the editor shows the "Untitled" placeholder (not literal text to delete);
+    // the sidebar/breadcrumb render "Untitled" via `title || "Untitled"`.
+    [id, workspaceId, parentId, "", position, now, now],
   );
   return id;
 }

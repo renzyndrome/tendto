@@ -18,6 +18,7 @@ import {
 } from "../../lib/calendar";
 import { parseProperties, type ItemRow } from "../../lib/items/mutations";
 import { useUiStore } from "../../stores/ui";
+import { TopBar } from "../layout/top-bar";
 
 interface CalendarItem {
   id: string;
@@ -63,87 +64,90 @@ export function CalendarView() {
   }
 
   return (
-    <div className="mx-auto flex h-full max-w-5xl flex-col px-6 py-8">
-      <header className="mb-4 flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold text-neutral-900">{formatMonthLabel(viewDate)}</h1>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setViewDate((d) => addMonths(d, -1))}
-            aria-label="Previous month"
-            className="rounded-md px-2 py-1 text-sm text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
-          >
-            ‹
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewDate(new Date())}
-            className="rounded-md px-3 py-1 text-sm text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900"
-          >
-            Today
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewDate((d) => addMonths(d, 1))}
-            aria-label="Next month"
-            className="rounded-md px-2 py-1 text-sm text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
-          >
-            ›
-          </button>
-        </div>
-      </header>
-
-      <div className="grid grid-cols-7 border-l border-t border-neutral-200 text-xs">
-        {WEEKDAYS.map((weekday) => (
-          <div
-            key={weekday}
-            className="border-b border-r border-neutral-200 bg-neutral-50 px-2 py-1 font-medium text-neutral-400"
-          >
-            {weekday}
-          </div>
-        ))}
-
-        {days.map((day) => {
-          const key = toDateKey(day);
-          const inMonth = day.getMonth() === activeMonth;
-          const isToday = key === todayKey;
-          const dayItems = itemsByDate.get(key) ?? [];
-          return (
-            <div
-              key={key}
-              data-testid={`cal-day-${key}`}
-              className={
-                "min-h-[92px] border-b border-r border-neutral-200 p-1 " +
-                (inMonth ? "bg-white" : "bg-neutral-50/40")
-              }
+    <div className="flex h-full flex-col bg-canvas">
+      <TopBar crumbs={[{ label: "Calendar" }]} />
+      <div className="mx-auto flex w-full max-w-5xl flex-col px-6 py-8">
+        <header className="mb-4 flex items-center justify-between gap-4">
+          <h1 className="text-2xl font-semibold text-ink">{formatMonthLabel(viewDate)}</h1>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setViewDate((d) => addMonths(d, -1))}
+              aria-label="Previous month"
+              className="rounded-input px-2 py-1 text-sm text-muted hover:bg-row-hover hover:text-ink"
             >
-              <div className="mb-1 flex justify-end">
-                <span
-                  className={
-                    "inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1 text-xs " +
-                    (isToday
-                      ? "bg-neutral-900 font-medium text-white"
-                      : inMonth
-                        ? "text-neutral-500"
-                        : "text-neutral-300")
-                  }
-                >
-                  {day.getDate()}
-                </span>
-              </div>
-              <div className="space-y-0.5">
-                {dayItems.slice(0, 3).map((item) => (
-                  <CalendarChip key={item.id} item={item} onOpen={openCollection} />
-                ))}
-                {dayItems.length > 3 ? (
-                  <div className="px-1 text-[11px] text-neutral-400">
-                    +{dayItems.length - 3} more
-                  </div>
-                ) : null}
-              </div>
+              ‹
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewDate(new Date())}
+              className="rounded-input px-3 py-1 text-sm text-secondary hover:bg-row-hover hover:text-ink"
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewDate((d) => addMonths(d, 1))}
+              aria-label="Next month"
+              className="rounded-input px-2 py-1 text-sm text-muted hover:bg-row-hover hover:text-ink"
+            >
+              ›
+            </button>
+          </div>
+        </header>
+
+        <div className="grid grid-cols-7 overflow-hidden rounded-card border-l border-t border-hairline text-xs">
+          {WEEKDAYS.map((weekday) => (
+            <div
+              key={weekday}
+              className="border-b border-r border-hairline bg-panel px-2 py-1 font-medium text-faint"
+            >
+              {weekday}
             </div>
-          );
-        })}
+          ))}
+
+          {days.map((day) => {
+            const key = toDateKey(day);
+            const inMonth = day.getMonth() === activeMonth;
+            const isToday = key === todayKey;
+            const dayItems = itemsByDate.get(key) ?? [];
+            return (
+              <div
+                key={key}
+                data-testid={`cal-day-${key}`}
+                className={
+                  "min-h-[92px] border-b border-r border-hairline p-1 " +
+                  (inMonth ? "bg-surface" : "bg-canvas")
+                }
+              >
+                <div className="mb-1 flex justify-end">
+                  <span
+                    className={
+                      "inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1 text-xs " +
+                      (isToday
+                        ? "bg-accent-soft font-medium text-accent-soft-text"
+                        : inMonth
+                          ? "text-secondary"
+                          : "text-faint")
+                    }
+                  >
+                    {day.getDate()}
+                  </span>
+                </div>
+                <div className="space-y-0.5">
+                  {dayItems.slice(0, 3).map((item) => (
+                    <CalendarChip key={item.id} item={item} onOpen={openCollection} />
+                  ))}
+                  {dayItems.length > 3 ? (
+                    <div className="px-1 text-[11px] text-muted">
+                      +{dayItems.length - 3} more
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -161,9 +165,9 @@ function CalendarChip({
       type="button"
       onClick={() => onOpen(item.collectionId)}
       title={item.title}
-      className="flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] text-neutral-700 hover:bg-neutral-100"
+      className="flex w-full items-center gap-1 truncate rounded-row px-1 py-0.5 text-left text-[11px] text-body hover:bg-row-hover"
     >
-      <span className="h-2 w-2 shrink-0 rounded-full bg-neutral-400" aria-hidden />
+      <span className="h-2 w-2 shrink-0 rounded-full bg-accent" aria-hidden />
       <span className="truncate">{item.title}</span>
     </button>
   );

@@ -2,6 +2,305 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================================
+   Meadow design tokens
+   ----------------------------------------------------------------------------
+   Colors, the accent, the document typeface, density, and editor width are all
+   driven by CSS variables + data-* attributes on <html>, so Appearance settings
+   apply live without a reload. Attributes are stamped by lib/prefs/apply-theme.ts:
+     data-mode="light|dark"          (resolved: system → light|dark)
+     data-accent="green|blue|terracotta|plum|mono"
+     data-doc-font="sans|serif|mono"
+     data-density="comfortable|compact"
+     data-editor-width="narrow|full"
+   ========================================================================== */
+
 :root {
   color-scheme: light;
+
+  /* Surfaces & text — Meadow light (warm paper) */
+  --canvas: #fbfaf7;
+  --panel: #f4f1ea;
+  --surface: #ffffff;
+  --ink: #1f1d18;
+  --body: #3b372f;
+  --secondary: #5b564c;
+  --muted: #8a857a;
+  --faint: #a39d90;
+  --hairline: rgba(31, 29, 24, 0.07);
+  --hairline-strong: rgba(31, 29, 24, 0.1);
+  --border: rgba(31, 29, 24, 0.08);
+  --border-hover: rgba(31, 29, 24, 0.2);
+  --row-hover: rgba(31, 29, 24, 0.05);
+  --btn-hover: rgba(31, 29, 24, 0.04);
+  --chip: rgba(31, 29, 24, 0.06);
+  --chevron: #c9c4b8;
+  --overdue: oklch(0.55 0.1 45);
+  --tooltip-bg: #23211c;
+  --tooltip-text: #fbfaf7;
+
+  /* Accent (default: Meadow green). Hue/chroma feed the oklch() ramps below so a
+     different data-accent only has to change the hue. */
+  --accent-hue: 152;
+  --accent-chroma: 0.11;
+  --accent: oklch(0.55 var(--accent-chroma) var(--accent-hue));
+  --accent-hover: oklch(0.5 var(--accent-chroma) var(--accent-hue));
+  --accent-soft: oklch(0.55 var(--accent-chroma) var(--accent-hue) / 0.1);
+  --accent-soft-strong: oklch(0.55 var(--accent-chroma) var(--accent-hue) / 0.12);
+  --accent-soft-text: oklch(0.4 0.09 var(--accent-hue));
+  --accent-glyph: oklch(0.5 0.09 var(--accent-hue));
+  --accent-contrast: #ffffff;
+  --accent-ring: oklch(0.55 var(--accent-chroma) var(--accent-hue) / 0.14);
+  /* Kanban drop placeholder (design 2a): 55%-alpha dashed border on a 6% accent fill. */
+  --accent-dashed: oklch(0.55 var(--accent-chroma) var(--accent-hue) / 0.55);
+  --accent-fill-6: oklch(0.55 var(--accent-chroma) var(--accent-hue) / 0.06);
+  --sync: oklch(0.62 0.13 var(--accent-hue));
+
+  /* Document typeface (Appearance → Document type). */
+  --doc-font: "Albert Sans", system-ui, sans-serif;
+  --doc-line: 1.65;
+  --doc-block-gap: 22px;
+
+  /* Editor width (Appearance → Editor width). */
+  --doc-max-width: 680px;
+}
+
+/* ---- Accent variants (hue swaps; mono is achromatic and set explicitly) ---- */
+:root[data-accent="blue"] {
+  --accent-hue: 250;
+}
+:root[data-accent="terracotta"] {
+  --accent-hue: 45;
+}
+:root[data-accent="plum"] {
+  --accent-hue: 320;
+}
+:root[data-accent="mono"] {
+  --accent: #3b372f;
+  --accent-hover: #26231d;
+  --accent-soft: rgba(59, 55, 47, 0.1);
+  --accent-soft-strong: rgba(59, 55, 47, 0.12);
+  --accent-soft-text: #3b372f;
+  --accent-glyph: #5b564c;
+  --accent-ring: rgba(59, 55, 47, 0.14);
+  --accent-dashed: rgba(59, 55, 47, 0.55);
+  --accent-fill-6: rgba(59, 55, 47, 0.06);
+  --sync: #5b564c;
+}
+
+/* ---- Document typeface variants ---- */
+:root[data-doc-font="serif"] {
+  --doc-font: "Source Serif 4", Georgia, serif;
+  --doc-line: 1.75;
+}
+:root[data-doc-font="mono"] {
+  --doc-font: ui-monospace, Menlo, monospace;
+}
+
+/* ---- Density ---- */
+:root[data-density="compact"] {
+  --doc-line: 1.5;
+  --doc-block-gap: 14px;
+}
+
+/* ---- Editor width ---- */
+:root[data-editor-width="full"] {
+  --doc-max-width: 100%;
+}
+
+/* ============================================================================
+   Dark mode — warm dark (never pure black). Overrides surface + text; accent
+   ramps stay hue-driven but soften a touch for contrast on dark.
+   ========================================================================== */
+:root[data-mode="dark"] {
+  color-scheme: dark;
+
+  --canvas: #1b1915;
+  --panel: #211f19;
+  --surface: #26231d;
+  --ink: #f4f1ea;
+  --body: #d8d3c7;
+  --secondary: #b3ada1;
+  --muted: #8f897d;
+  --faint: #6f6a5f;
+  --hairline: rgba(255, 255, 255, 0.07);
+  --hairline-strong: rgba(255, 255, 255, 0.1);
+  --border: rgba(255, 255, 255, 0.1);
+  --border-hover: rgba(255, 255, 255, 0.24);
+  --row-hover: rgba(255, 255, 255, 0.05);
+  --btn-hover: rgba(255, 255, 255, 0.05);
+  --chip: rgba(255, 255, 255, 0.08);
+  --chevron: #57534a;
+  --overdue: oklch(0.7 0.12 45);
+  --tooltip-bg: #322e27;
+  --tooltip-text: #f4f1ea;
+
+  --accent-soft: oklch(0.62 var(--accent-chroma) var(--accent-hue) / 0.18);
+  --accent-soft-strong: oklch(0.62 var(--accent-chroma) var(--accent-hue) / 0.22);
+  --accent-soft-text: oklch(0.82 0.1 var(--accent-hue));
+  --accent-glyph: oklch(0.78 0.1 var(--accent-hue));
+}
+:root[data-mode="dark"][data-accent="mono"] {
+  --accent: #e8e3d8;
+  --accent-hover: #ffffff;
+  --accent-soft: rgba(255, 255, 255, 0.1);
+  --accent-soft-strong: rgba(255, 255, 255, 0.14);
+  --accent-soft-text: #e8e3d8;
+  --accent-glyph: #b3ada1;
+  --accent-contrast: #1f1d18;
+  --sync: #b3ada1;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background: var(--canvas);
+    color: var(--ink);
+    font-family: "Albert Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  /* Native form controls pick up the accent (checkboxes, date pickers, etc.). */
+  :root {
+    accent-color: var(--accent);
+  }
+  ::selection {
+    background: var(--accent-soft-strong);
+  }
+}
+
+/* ============================================================================
+   Reusable Meadow component classes (kept small; most styling is Tailwind).
+   ========================================================================== */
+@layer components {
+  /* A key hint chip: ⌘K, ↵, esc. */
+  .kbd {
+    @apply inline-flex items-center rounded bg-chip px-1.5 py-0.5 font-mono text-[10px] leading-none text-faint;
+  }
+
+  /* Sidebar / menu row hover. */
+  .row-hover {
+    @apply transition-colors hover:bg-[var(--row-hover)];
+  }
+}
+
+/* ============================================================================
+   BlockNote (Mantine) → Meadow theme.
+   BlockNote scopes its palette to `--bn-colors-*` on `.bn-root`; we override those
+   so the document reads as native Meadow paper (light + dark). Doc layout (column
+   width, title) lives in page-editor.tsx. index.css loads after BlockNote's CSS,
+   so these equal-specificity overrides win by source order.
+   ========================================================================== */
+.bn-root {
+  --bn-colors-editor-text: var(--body);
+  --bn-colors-editor-background: transparent;
+  --bn-colors-menu-text: var(--body);
+  --bn-colors-menu-background: var(--surface);
+  --bn-colors-tooltip-text: var(--body);
+  --bn-colors-tooltip-background: var(--surface);
+  --bn-colors-hovered-text: var(--ink);
+  --bn-colors-hovered-background: var(--row-hover);
+  --bn-colors-selected-text: var(--accent-soft-text);
+  --bn-colors-selected-background: var(--accent-soft-strong);
+  --bn-colors-disabled-text: var(--faint);
+  --bn-colors-disabled-background: var(--panel);
+  --bn-colors-shadow: var(--border);
+  --bn-colors-border: var(--border);
+  --bn-colors-side-menu: var(--faint);
+  --bn-colors-highlights-gray-text: var(--muted);
+  --bn-colors-highlights-gray-background: var(--chip);
+  --bn-shadow-medium: 0 10px 30px rgba(31, 29, 24, 0.12);
+  --bn-border-radius: 10px;
+  --bn-font-family: var(--doc-font);
+}
+
+.bn-editor {
+  background: transparent;
+  color: var(--body);
+  font-family: var(--doc-font);
+  padding-inline: 0;
+}
+
+/* Notion-style borderless editing: never show a focus box on the editor or its blocks. The caret
+   is the focus indicator. Chromium already renders this cleanly; Firefox draws a :focus-visible
+   ring on the contenteditable (even on mouse focus), so suppress it explicitly across states. */
+.bn-editor,
+.bn-editor:focus,
+.bn-editor:focus-visible,
+.bn-container [contenteditable]:focus,
+.bn-container [contenteditable]:focus-visible,
+.bn-block-content:focus,
+.bn-block-content:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+/* Firefox-only focus-ring pseudo (kept in its own rule so it doesn't invalidate the block above). */
+.bn-editor:-moz-focusring,
+.bn-container [contenteditable]:-moz-focusring {
+  outline: none !important;
+}
+
+/* Doc block rhythm + typography to match the Meadow spec. */
+.bn-block-content[data-content-type="paragraph"] {
+  font-size: 15.5px;
+  line-height: var(--doc-line);
+  color: var(--body);
+}
+.bn-block-content[data-content-type="heading"][data-level="1"] {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.bn-block-content[data-content-type="heading"][data-level="2"] {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+/* Code blocks → Meadow panel with a warm tint. */
+.bn-root pre {
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  color: var(--body);
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+/* To-do marker → a 16px box, 5px radius, accent-filled with a white check when done (design 1a). */
+.bn-root input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1.5px solid var(--chevron);
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color 80ms ease,
+    border-color 80ms ease;
+}
+.bn-root input[type="checkbox"]:checked {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5l3 3 6-7'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 12px;
+}
+/* BlockNote ships `.bn-block-content[...checkListItem]>div>input{width:12px;height:24px}` (a tall
+   pill). Override with a more specific selector so the to-do box is a true 16px square. */
+.bn-root .bn-block-content[data-content-type="checkListItem"] input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  align-self: center;
 }

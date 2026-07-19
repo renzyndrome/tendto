@@ -46,12 +46,12 @@ export function FocusView() {
 
   return (
     <div className="mx-auto flex h-full max-w-md flex-col items-center px-6 py-12">
-      <div className="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-400">
+      <div className="mb-1 text-section-label uppercase text-faint">
         {store.phase === "work" ? "Focus" : "Break"}
       </div>
       <div
         data-testid="focus-timer"
-        className="mb-5 text-6xl font-semibold tabular-nums text-neutral-900"
+        className="mb-5 text-6xl font-semibold tabular-nums text-ink"
       >
         {mmss(remaining)}
       </div>
@@ -61,7 +61,7 @@ export function FocusView() {
           <button
             type="button"
             onClick={() => store.pause()}
-            className="rounded-md bg-neutral-900 px-5 py-1.5 text-sm font-medium text-white hover:bg-neutral-700"
+            className="rounded-input bg-accent px-5 py-1.5 text-sm font-medium text-accent-contrast hover:bg-accent-hover"
           >
             Pause
           </button>
@@ -69,7 +69,7 @@ export function FocusView() {
           <button
             type="button"
             onClick={() => store.start()}
-            className="rounded-md bg-neutral-900 px-5 py-1.5 text-sm font-medium text-white hover:bg-neutral-700"
+            className="rounded-input bg-accent px-5 py-1.5 text-sm font-medium text-accent-contrast hover:bg-accent-hover"
           >
             Start
           </button>
@@ -77,13 +77,13 @@ export function FocusView() {
         <button
           type="button"
           onClick={() => store.reset()}
-          className="rounded-md px-4 py-1.5 text-sm text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
+          className="rounded-input px-4 py-1.5 text-sm text-muted hover:bg-row-hover hover:text-ink"
         >
           Reset
         </button>
       </div>
 
-      <div className="mb-8 flex items-center gap-4 text-xs text-neutral-500">
+      <div className="mb-8 flex items-center gap-4 text-xs text-secondary">
         <span data-testid="focus-completed">🍅 {store.completed} done</span>
         <label className="flex items-center gap-1">
           Focus
@@ -94,7 +94,7 @@ export function FocusView() {
             value={store.workMin}
             onChange={(e) => store.setDurations(Number(e.target.value), store.breakMin)}
             aria-label="Focus minutes"
-            className="w-12 rounded border border-neutral-200 px-1 py-0.5 text-center"
+            className="w-12 rounded-input border border-border-soft bg-surface px-1 py-0.5 text-center text-ink outline-none focus:border-accent"
           />
           min
         </label>
@@ -107,7 +107,7 @@ export function FocusView() {
             value={store.breakMin}
             onChange={(e) => store.setDurations(store.workMin, Number(e.target.value))}
             aria-label="Break minutes"
-            className="w-12 rounded border border-neutral-200 px-1 py-0.5 text-center"
+            className="w-12 rounded-input border border-border-soft bg-surface px-1 py-0.5 text-center text-ink outline-none focus:border-accent"
           />
           min
         </label>
@@ -115,12 +115,12 @@ export function FocusView() {
 
       <div className="w-full">
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-sm font-medium text-neutral-700">This session</span>
+          <span className="text-sm font-medium text-secondary">This session</span>
           {store.tasks.some((t) => t.done) ? (
             <button
               type="button"
               onClick={() => store.clearDone()}
-              className="text-xs text-neutral-400 hover:text-neutral-700"
+              className="text-xs text-muted hover:text-ink"
             >
               Clear done
             </button>
@@ -135,12 +135,12 @@ export function FocusView() {
               if (e.key === "Enter") addFromDraft();
             }}
             placeholder="Add a task for this session…"
-            className="flex-1 rounded-md border border-neutral-200 px-3 py-1.5 text-sm outline-none focus:border-neutral-900"
+            className="flex-1 rounded-input border border-border-soft bg-surface px-3 py-1.5 text-sm text-ink placeholder:text-muted outline-none focus:border-accent"
           />
           <button
             type="button"
             onClick={addFromDraft}
-            className="rounded-md bg-neutral-900 px-3 text-sm text-white hover:bg-neutral-700"
+            className="rounded-input bg-accent px-3 text-sm text-accent-contrast hover:bg-accent-hover"
           >
             Add
           </button>
@@ -150,18 +150,18 @@ export function FocusView() {
           {store.tasks.map((task) => (
             <li
               key={task.id}
-              className="group flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-neutral-50"
+              className="group flex items-center gap-3 rounded-row px-2 py-1.5 row-hover"
             >
               <input
                 type="checkbox"
                 checked={task.done}
                 onChange={() => store.toggleTask(task.id)}
-                className="h-4 w-4 shrink-0 rounded border-neutral-300"
+                className="h-4 w-4 shrink-0 rounded border-chevron accent-accent"
                 aria-label={task.done ? "Mark not done" : "Mark done"}
               />
               <span
                 className={
-                  "flex-1 text-sm " + (task.done ? "text-neutral-400 line-through" : "text-neutral-800")
+                  "flex-1 text-sm " + (task.done ? "text-muted line-through" : "text-body")
                 }
               >
                 {task.text}
@@ -170,20 +170,20 @@ export function FocusView() {
                 type="button"
                 onClick={() => store.removeTask(task.id)}
                 aria-label="Remove task"
-                className="invisible shrink-0 text-neutral-300 hover:text-red-500 group-hover:visible"
+                className="invisible shrink-0 text-faint hover:text-overdue group-hover:visible"
               >
                 ×
               </button>
             </li>
           ))}
           {store.tasks.length === 0 ? (
-            <li className="px-2 py-1.5 text-sm text-neutral-400">
+            <li className="px-2 py-1.5 text-sm text-muted">
               No tasks yet — add a few to focus on.
             </li>
           ) : null}
         </ul>
         {store.tasks.length > 0 ? (
-          <p className="mt-2 text-xs text-neutral-400">{remainingTasks} left</p>
+          <p className="mt-2 text-xs text-faint">{remainingTasks} left</p>
         ) : null}
       </div>
     </div>

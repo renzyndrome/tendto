@@ -45,7 +45,9 @@ export function parseColumns(config: string | null | undefined): Column[] {
     if (!Array.isArray(parsed.columns)) return DEFAULT_COLUMNS;
     const columns = parsed.columns
       .filter((c): c is Column => !!c && typeof (c as Column).id === "string")
-      .map((c) => ({ id: c.id, label: typeof c.label === "string" && c.label ? c.label : c.id }));
+      // Preserve an EMPTY label (a freshly-added, not-yet-named column shows a placeholder in the
+      // board header); only fall back to the id when the label is missing/non-string entirely.
+      .map((c) => ({ id: c.id, label: typeof c.label === "string" ? c.label : c.id }));
     return columns.length > 0 ? columns : DEFAULT_COLUMNS;
   } catch {
     return DEFAULT_COLUMNS;
@@ -57,7 +59,9 @@ export interface ItemProperties {
   title: string;
   status: string;
   due?: string; // ISO date (YYYY-MM-DD)
-  assignee?: string;
+  assignees?: string[]; // better-auth user ids of assigned workspace members
+  assignee?: string; // legacy free-text assignee (read-only fallback; superseded by assignees)
+  description?: string;
   [key: string]: unknown;
 }
 
@@ -82,7 +86,10 @@ export function parseProperties(row: ItemRow): ItemProperties {
   }
   const title = typeof raw.title === "string" ? raw.title : "";
   const status = typeof raw.status === "string" && raw.status ? raw.status : "todo";
-  return { ...raw, title, status };
+  const assignees = Array.isArray(raw.assignees)
+    ? raw.assignees.filter((a): a is string => typeof a === "string")
+    : undefined;
+  return { ...raw, title, status, assignees };
 }
 
 async function nextPosition(collectionId: string): Promise<number> {
@@ -112,38 +119,44 @@ export async function createItem(
 }
 
 /**
- * Read the item's LATEST properties from the replica (not the caller's snapshot). Whole-bag
- * writes merge onto this, so two quick edits to different fields of the same item (e.g. title
- * then due date) can't clobber each other with a stale base.
+ * Merge a partial patch into an item's `properties`, one field at a time via SQLite `json_set`.
+ *
+ * This is ATOMIC per field: json_set updates only the given JSON paths in place (SQLite serializes
+ * writers), so several near-simultaneous edits from the detail modal — e.g. title, due, then
+ * description — can't clobber one another the way a read-whole-bag-then-write approach can. Object
+ * / array values (e.g. `assignees`) are embedded with `json(?)`. PowerSync still captures the full
+ * resulting `properties` string as the CRUD op, so the upload path is unchanged.
+ *
+ * Note: patch keys are code-controlled field names (never user input), so interpolating them into
+ * the JSON path is safe; all values are bound parameters.
  */
-async function currentProperties(row: ItemRow): Promise<ItemProperties> {
-  const rows = await db.getAll<{ properties: string }>(
-    "SELECT properties FROM items WHERE id = ?",
-    [row.id],
-  );
-  return parseProperties(rows[0] ? { ...row, properties: rows[0].properties } : row);
-}
-
-/** Merge a partial patch into the item's properties (whole-bag write; keeps status columns in sync). */
 export async function patchItem(row: ItemRow, patch: Partial<ItemProperties>): Promise<void> {
-  const next = { ...(await currentProperties(row)), ...patch };
-  await db.execute("UPDATE items SET properties = ?, updated_at = ? WHERE id = ?", [
-    JSON.stringify(next),
-    new Date().toISOString(),
-    row.id,
-  ]);
+  const paths: string[] = [];
+  const args: unknown[] = [];
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
+    if (value !== null && typeof value === "object") {
+      paths.push(`'$.${key}', json(?)`);
+      args.push(JSON.stringify(value));
+    } else {
+      paths.push(`'$.${key}', ?`);
+      args.push(value);
+    }
+  }
+  if (paths.length === 0) return;
+  await db.execute(
+    `UPDATE items SET properties = json_set(properties, ${paths.join(", ")}), updated_at = ? WHERE id = ?`,
+    [...args, new Date().toISOString(), row.id],
+  );
 }
 
 /** Move an item into a status column (board DnD), appending it to the end of the collection. */
 export async function moveItemToStatus(row: ItemRow, status: string): Promise<void> {
-  const next = { ...(await currentProperties(row)), status };
   const position = await nextPosition(row.collection_id);
-  await db.execute("UPDATE items SET properties = ?, position = ?, updated_at = ? WHERE id = ?", [
-    JSON.stringify(next),
-    position,
-    new Date().toISOString(),
-    row.id,
-  ]);
+  await db.execute(
+    "UPDATE items SET properties = json_set(properties, '$.status', ?), position = ?, updated_at = ? WHERE id = ?",
+    [status, position, new Date().toISOString(), row.id],
+  );
 }
 
 export async function deleteItem(id: string): Promise<void> {

@@ -49,6 +49,30 @@ export function totalHits(results: SearchResults): number {
   return results.pages.length + results.items.length + results.blocks.length;
 }
 
+/** One run of text in a highlighted label — `match` runs get wrapped in <mark> at the edge. */
+export interface HighlightSegment {
+  text: string;
+  match: boolean;
+}
+
+/**
+ * Split `text` into segments around the first case-insensitive contiguous occurrence of `query`.
+ * Pure + unit-safe: returns a single unmatched segment when the query is empty or absent, so
+ * callers can always render the array without special-casing "no match".
+ */
+export function highlightMatch(text: string, query: string): HighlightSegment[] {
+  const needle = query.trim();
+  if (!needle) return [{ text, match: false }];
+  const start = text.toLowerCase().indexOf(needle.toLowerCase());
+  if (start === -1) return [{ text, match: false }];
+  const end = start + needle.length;
+  const segments: HighlightSegment[] = [];
+  if (start > 0) segments.push({ text: text.slice(0, start), match: false });
+  segments.push({ text: text.slice(start, end), match: true });
+  if (end < text.length) segments.push({ text: text.slice(end), match: false });
+  return segments;
+}
+
 /** First hit in display order (pages → items → blocks), for "Enter opens top result". */
 export function firstHit(results: SearchResults): SearchHit | undefined {
   return results.pages[0] ?? results.items[0] ?? results.blocks[0];

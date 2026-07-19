@@ -9,9 +9,18 @@ import {
   PowerSyncDatabase,
 } from "@powersync/web";
 
-import { apiFetch } from "../api/client";
+import { ApiError, apiFetch } from "../api/client";
 import { getAuthToken } from "../auth/token";
 import { AppSchema } from "./schema";
+
+// A 4xx from the write path is PERMANENT — retrying can never succeed (bad table, no access,
+// gone). Such an op must be discarded so it doesn't wedge the whole upload queue (and, with it,
+// downloads). 401 is excluded: it's a transient token issue that a refresh + retry fixes.
+function isPermanentRejection(err: unknown): boolean {
+  return (
+    err instanceof ApiError && err.status >= 400 && err.status < 500 && err.status !== 401
+  );
+}
 
 export const db = new PowerSyncDatabase({
   schema: AppSchema,
@@ -51,7 +60,14 @@ class Connector implements PowerSyncBackendConnector {
       });
       await tx.complete();
     } catch (err) {
-      // Leave the transaction in the queue; PowerSync retries with backoff.
+      if (isPermanentRejection(err)) {
+        // The server refused this write for good (e.g. a stale op for a workspace this user is no
+        // longer a member of). Drop it so the queue can drain instead of looping forever.
+        console.warn("uploadData: discarding a permanently-rejected write", err, tx.crud);
+        await tx.complete();
+        return;
+      }
+      // Transient (network / 5xx / 401): leave it queued; PowerSync retries with backoff.
       console.error("uploadData failed; will retry", err);
       throw err;
     }

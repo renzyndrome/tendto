@@ -7,25 +7,35 @@ import { useMemo, useState } from "react";
 
 import { deleteColumn, newColumn, setColumns } from "../../../lib/collections";
 import {
-  columnColor,
   createItem,
   deleteItem,
   moveItemToStatus,
   parseProperties,
-  patchItem,
   type Column,
   type ItemRow,
 } from "../../../lib/items/mutations";
+import type { WorkspaceMembers } from "../../../stores/members";
+import { Icon } from "../../ui/icon";
 import { InlineText } from "./inline-text";
+import { AssigneeAvatars, DueLabel } from "./item-meta";
 
 interface BoardViewProps {
   items: ItemRow[];
   workspaceId: string | null;
   collectionId: string;
   columns: Column[];
+  members: WorkspaceMembers;
+  onOpenItem: (id: string) => void;
 }
 
-export function BoardView({ items, workspaceId, collectionId, columns }: BoardViewProps) {
+export function BoardView({
+  items,
+  workspaceId,
+  collectionId,
+  columns,
+  members,
+  onOpenItem,
+}: BoardViewProps) {
   const byStatus = useMemo(() => {
     const map = new Map<string, ItemRow[]>();
     for (const column of columns) map.set(column.id, []);
@@ -40,10 +50,12 @@ export function BoardView({ items, workspaceId, collectionId, columns }: BoardVi
 
   const itemsById = useMemo(() => new Map(items.map((row) => [row.id, row])), [items]);
   const [dragId, setDragId] = useState<string | null>(null);
+  const [overCol, setOverCol] = useState<string | null>(null);
 
   async function drop(status: string): Promise<void> {
     const id = dragId;
     setDragId(null);
+    setOverCol(null);
     if (!id) return;
     const row = itemsById.get(id);
     if (row && parseProperties(row).status !== status) await moveItemToStatus(row, status);
@@ -70,74 +82,113 @@ export function BoardView({ items, workspaceId, collectionId, columns }: BoardVi
     void deleteColumn(collectionId, columns, columnId);
   }
 
+  function addCard(status: string): void {
+    if (workspaceId) void createItem(workspaceId, collectionId, { status });
+  }
+
   return (
-    <div className="flex h-full items-start gap-4">
-      {columns.map((column, index) => (
-        <div
-          key={column.id}
-          data-testid={`board-col-${column.id}`}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={() => void drop(column.id)}
-          className="flex w-72 shrink-0 flex-col rounded-lg bg-neutral-50 p-2"
-        >
-          <div className="group mb-2 flex items-center gap-1 px-1">
-            <span className={`h-2 w-2 shrink-0 rounded-full ${columnColor(index)}`} aria-hidden />
-            <InlineText
-              value={column.label}
-              onCommit={(label) => renameColumn(column.id, label)}
-              placeholder="Column"
-              className="min-w-0 flex-1 bg-transparent text-sm font-medium text-neutral-700 outline-none"
-            />
-            <span className="text-xs text-neutral-400">{byStatus.get(column.id)?.length ?? 0}</span>
-            <button
-              type="button"
-              onClick={() => moveColumn(index, -1)}
-              aria-label="Move column left"
-              className="invisible px-0.5 text-neutral-400 hover:text-neutral-700 group-hover:visible"
-            >
-              ‹
-            </button>
-            <button
-              type="button"
-              onClick={() => moveColumn(index, 1)}
-              aria-label="Move column right"
-              className="invisible px-0.5 text-neutral-400 hover:text-neutral-700 group-hover:visible"
-            >
-              ›
-            </button>
-            <button
-              type="button"
-              onClick={() => removeColumn(column.id)}
-              aria-label="Delete column"
-              className="invisible px-0.5 text-neutral-400 hover:text-red-500 group-hover:visible"
-            >
-              ×
-            </button>
-          </div>
-
-          <div className="flex-1 space-y-2 overflow-y-auto">
-            {(byStatus.get(column.id) ?? []).map((row) => (
-              <BoardCard key={row.id} row={row} onDragStart={() => setDragId(row.id)} />
-            ))}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              if (workspaceId) void createItem(workspaceId, collectionId, { status: column.id });
+    <div className="flex h-full items-start gap-4 overflow-x-auto">
+      {columns.map((column, index) => {
+        const isDone = index === columns.length - 1 && columns.length > 1;
+        const cards = byStatus.get(column.id) ?? [];
+        return (
+          <div
+            key={column.id}
+            data-testid={`board-col-${column.id}`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setOverCol(column.id);
             }}
-            className="mt-2 rounded-md px-2 py-1.5 text-left text-sm text-neutral-500 hover:bg-neutral-200/60"
+            onDrop={() => void drop(column.id)}
+            className="flex w-[236px] shrink-0 flex-col gap-2.5"
           >
-            + Add card
-          </button>
-        </div>
-      ))}
+            <div className="group flex items-center gap-1.5 px-0.5">
+              <InlineText
+                value={column.label}
+                onCommit={(label) => renameColumn(column.id, label)}
+                placeholder="Column"
+                className={
+                  "min-w-0 flex-1 bg-transparent text-xs font-semibold outline-none placeholder:text-faint " +
+                  (isDone ? "text-faint" : "text-secondary")
+                }
+              />
+              <span className="shrink-0 rounded-pill bg-chip px-1.5 text-[10.5px] text-faint">
+                {cards.length}
+              </span>
+              <button
+                type="button"
+                onClick={() => moveColumn(index, -1)}
+                aria-label="Move column left"
+                className="invisible shrink-0 rounded p-0.5 text-faint hover:text-ink group-hover:visible"
+              >
+                <Icon name="chevron-left" size={13} />
+              </button>
+              <button
+                type="button"
+                onClick={() => moveColumn(index, 1)}
+                aria-label="Move column right"
+                className="invisible shrink-0 rounded p-0.5 text-faint hover:text-ink group-hover:visible"
+              >
+                <Icon name="chevron-right" size={13} />
+              </button>
+              <button
+                type="button"
+                onClick={() => removeColumn(column.id)}
+                aria-label="Delete column"
+                className="invisible shrink-0 rounded p-0.5 text-faint hover:text-overdue group-hover:visible"
+              >
+                <Icon name="close" size={13} />
+              </button>
+              <button
+                type="button"
+                onClick={() => addCard(column.id)}
+                aria-label="Add card"
+                className="invisible shrink-0 rounded p-0.5 text-faint hover:text-ink group-hover:visible"
+              >
+                <Icon name="plus" size={13} />
+              </button>
+            </div>
+
+            <div className="flex flex-1 flex-col gap-2.5 overflow-y-auto">
+              {cards.map((row) => (
+                <BoardCard
+                  key={row.id}
+                  row={row}
+                  done={isDone}
+                  dragging={dragId === row.id}
+                  members={members}
+                  onOpen={() => onOpenItem(row.id)}
+                  onDragStart={() => setDragId(row.id)}
+                  onDragEnd={() => {
+                    setDragId(null);
+                    setOverCol(null);
+                  }}
+                />
+              ))}
+              {overCol === column.id && dragId ? (
+                <div
+                  className="h-16 rounded-card border-[1.5px] border-dashed"
+                  style={{ borderColor: "var(--accent-dashed)", background: "var(--accent-fill-6)" }}
+                />
+              ) : null}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => addCard(column.id)}
+              className="rounded-row px-2 py-1.5 text-left text-[12px] text-faint hover:text-ink"
+            >
+              + Add card
+            </button>
+          </div>
+        );
+      })}
 
       <button
         type="button"
-        onClick={() => void setColumns(collectionId, [...columns, newColumn("New column")])}
+        onClick={() => void setColumns(collectionId, [...columns, newColumn()])}
         aria-label="Add column"
-        className="mt-0 h-9 shrink-0 rounded-lg px-3 text-sm text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+        className="mt-0 h-9 shrink-0 rounded-card px-3 text-[12px] text-faint hover:bg-btn-hover hover:text-ink"
       >
         + Add column
       </button>
@@ -145,66 +196,75 @@ export function BoardView({ items, workspaceId, collectionId, columns }: BoardVi
   );
 }
 
-function BoardCard({ row, onDragStart }: { row: ItemRow; onDragStart: () => void }) {
+interface BoardCardProps {
+  row: ItemRow;
+  done: boolean;
+  dragging: boolean;
+  members: WorkspaceMembers;
+  onOpen: () => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+}
+
+/**
+ * A board card = a compact SUMMARY of the item (title, tag, due, assignees). Clicking it opens the
+ * task detail modal for full editing — keeping the card itself uncluttered (fixes the old cramped
+ * inline panel). Dragging still moves it between columns; the ✕ deletes.
+ */
+function BoardCard({ row, done, dragging, members, onOpen, onDragStart, onDragEnd }: BoardCardProps) {
   const props = parseProperties(row);
-  const [open, setOpen] = useState(false);
+  const tag = typeof props.tag === "string" && props.tag ? props.tag : null;
+  const hasMeta = tag || props.due || (props.assignees && props.assignees.length > 0);
+
   return (
     <div
       draggable
       onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onClick={onOpen}
       data-testid="board-card"
-      className="group cursor-grab rounded-md border border-neutral-200 bg-white p-2 shadow-sm"
+      className={
+        "group rounded-card border px-3.5 py-3 " +
+        (dragging
+          ? "rotate-[2.5deg] cursor-grabbing border-accent bg-surface shadow-drag"
+          : done
+            ? "cursor-pointer border-hairline bg-canvas"
+            : "cursor-pointer border-border-soft bg-surface shadow-card hover:border-border-hover")
+      }
     >
-      <div className="flex items-start justify-between gap-1">
-        <InlineText
-          value={props.title}
-          onCommit={(title) => void patchItem(row, { title })}
-          placeholder="Untitled"
-          className="flex-1 bg-transparent text-sm text-neutral-800 outline-none placeholder:text-neutral-300"
-        />
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-label={open ? "Hide card details" : "Edit card details"}
-          className="shrink-0 text-neutral-300 hover:text-neutral-700"
+      <div className="flex items-start justify-between gap-1.5">
+        <span
+          className={
+            "min-w-0 flex-1 text-[13px] leading-[1.4] " +
+            (done ? "text-muted line-through" : "font-medium text-body")
+          }
         >
-          {open ? "▴" : "▾"}
-        </button>
+          {props.title || <span className="text-muted">Untitled</span>}
+        </span>
         <button
           type="button"
-          onClick={() => void deleteItem(row.id)}
-          className="invisible shrink-0 text-neutral-300 hover:text-red-500 group-hover:visible"
+          onClick={(e) => {
+            e.stopPropagation();
+            void deleteItem(row.id);
+          }}
+          className="invisible shrink-0 rounded text-faint hover:text-overdue group-hover:visible"
           aria-label="Delete card"
         >
-          ×
+          <Icon name="close" size={13} />
         </button>
       </div>
 
-      {!open && props.due ? (
-        <div className="mt-1 text-xs text-neutral-400">Due {props.due}</div>
-      ) : null}
-
-      {open ? (
-        <div className="mt-2 space-y-1.5 border-t border-neutral-100 pt-2">
-          <label className="flex items-center gap-2 text-xs text-neutral-500">
-            <span className="w-14 shrink-0">Due</span>
-            <input
-              type="date"
-              value={props.due ?? ""}
-              onChange={(e) => void patchItem(row, { due: e.target.value })}
-              aria-label="Card due date"
-              className="flex-1 rounded border border-neutral-200 px-1.5 py-0.5 text-xs text-neutral-700"
-            />
-          </label>
-          <label className="flex items-center gap-2 text-xs text-neutral-500">
-            <span className="w-14 shrink-0">Assignee</span>
-            <InlineText
-              value={props.assignee ?? ""}
-              onCommit={(assignee) => void patchItem(row, { assignee })}
-              placeholder="—"
-              className="flex-1 rounded border border-neutral-200 bg-white px-1.5 py-0.5 text-xs text-neutral-700 outline-none placeholder:text-neutral-300"
-            />
-          </label>
+      {!done && hasMeta ? (
+        <div className="mt-2 flex items-center gap-2">
+          {tag ? (
+            <span className="rounded-pill bg-accent-soft px-2 py-0.5 text-[10px] font-medium text-accent-soft-text">
+              {tag}
+            </span>
+          ) : null}
+          {props.due ? <DueLabel due={props.due} /> : null}
+          <div className="ml-auto">
+            <AssigneeAvatars assignees={props.assignees} members={members} size={20} />
+          </div>
         </div>
       ) : null}
     </div>

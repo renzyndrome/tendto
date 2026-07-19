@@ -17,7 +17,7 @@ export function ChecklistView({ items, columns }: { items: ItemRow[]; columns: C
   const doneId = columns[columns.length - 1]?.id ?? "done";
 
   if (items.length === 0) {
-    return <p className="py-10 text-center text-sm text-neutral-400">No items yet — add one above.</p>;
+    return <p className="py-10 text-center text-sm text-muted">No items yet — add one above.</p>;
   }
   return (
     <ul data-testid="checklist" className="space-y-0.5">
@@ -33,12 +33,12 @@ function ChecklistRow({ row, todoId, doneId }: { row: ItemRow; todoId: string; d
   const done = props.status === doneId;
 
   return (
-    <li className="group flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-neutral-50">
+    <li className="group flex items-center gap-3 rounded-row px-2 py-1.5 row-hover">
       <input
         type="checkbox"
         checked={done}
         onChange={() => void patchItem(row, { status: done ? todoId : doneId })}
-        className="h-4 w-4 shrink-0 rounded border-neutral-300"
+        className="h-4 w-4 shrink-0 rounded border-chevron"
         aria-label={done ? "Mark not done" : "Mark done"}
       />
       <InlineText
@@ -46,14 +46,14 @@ function ChecklistRow({ row, todoId, doneId }: { row: ItemRow; todoId: string; d
         onCommit={(title) => void patchItem(row, { title })}
         placeholder="Untitled"
         className={
-          "flex-1 bg-transparent text-sm outline-none placeholder:text-neutral-300 " +
-          (done ? "text-neutral-400 line-through" : "text-neutral-800")
+          "flex-1 bg-transparent text-sm outline-none placeholder:text-muted " +
+          (done ? "text-muted line-through" : "text-body")
         }
       />
       <button
         type="button"
         onClick={() => void deleteItem(row.id)}
-        className="invisible shrink-0 rounded px-1 text-neutral-300 hover:text-red-500 group-hover:visible"
+        className="invisible shrink-0 rounded px-1 text-faint hover:text-overdue group-hover:visible"
         aria-label="Delete item"
       >
         ×

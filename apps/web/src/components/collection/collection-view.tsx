@@ -9,8 +9,12 @@ import { useEffect, useMemo, useState } from "react";
 
 import { createItem, parseColumns, type ItemRow } from "../../lib/items/mutations";
 import { db } from "../../lib/powersync/client";
+import { useWorkspaceMembers } from "../../stores/members";
 import { useUiStore } from "../../stores/ui";
+import { TopBar } from "../layout/top-bar";
+import { SegmentedControl, type SegmentOption } from "../ui/segmented";
 import { Spinner } from "../ui/spinner";
+import { TaskDetailModal } from "./task-detail-modal";
 import { BoardView } from "./views/board-view";
 import { ChecklistView } from "./views/checklist-view";
 import { ListView } from "./views/list-view";
@@ -19,12 +23,13 @@ import { TableView } from "./views/table-view";
 const VIEWS = ["checklist", "list", "table", "board"] as const;
 export type CollectionViewKind = (typeof VIEWS)[number];
 
-const VIEW_LABELS: Record<CollectionViewKind, string> = {
-  checklist: "Checklist",
-  list: "List",
-  table: "Table",
-  board: "Board",
-};
+// Segmented view switcher — Meadow order is Board first, then Table / List / Checklist.
+const VIEW_OPTIONS: SegmentOption<CollectionViewKind>[] = [
+  { value: "board", label: "Board" },
+  { value: "table", label: "Table" },
+  { value: "list", label: "List" },
+  { value: "checklist", label: "Checklist" },
+];
 
 interface CollectionRow {
   id: string;
@@ -51,21 +56,24 @@ export function CollectionView({ collectionId }: { collectionId: string }) {
 
   const collection = collections[0];
   const [override, setOverride] = useState<CollectionViewKind | null>(null);
+  const [openItemId, setOpenItemId] = useState<string | null>(null);
+  const members = useWorkspaceMembers(workspaceId);
   const columns = useMemo(() => parseColumns(collection?.config), [collection?.config]);
+  const openRow = openItemId ? items.find((i) => i.id === openItemId) ?? null : null;
   const view: CollectionViewKind =
     override ?? (isViewKind(collection?.default_view) ? collection.default_view : "board");
 
   if (isLoading && !collection) {
     return (
-      <div className="flex h-full items-center justify-center">
+      <div className="flex h-full items-center justify-center bg-canvas">
         <Spinner label="Loading…" />
       </div>
     );
   }
   if (!collection) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-neutral-400">This collection no longer exists.</p>
+      <div className="flex h-full items-center justify-center bg-canvas">
+        <p className="text-sm text-muted">This collection no longer exists.</p>
       </div>
     );
   }
@@ -86,52 +94,57 @@ export function CollectionView({ collectionId }: { collectionId: string }) {
   }
 
   return (
-    <div className="mx-auto flex h-full max-w-5xl flex-col px-6 py-8">
-      <header className="mb-4 flex items-center justify-between gap-4">
+    <div className="flex h-full flex-col bg-canvas">
+      <TopBar crumbs={[{ label: "Pages" }, { label: collection.name || "Untitled" }]} />
+
+      <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col px-6 pt-6">
         <CollectionName collectionId={collectionId} name={collection.name} />
-        <button
-          type="button"
-          onClick={() => void handleNewItem()}
-          className="shrink-0 rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700"
-        >
-          + New item
-        </button>
-      </header>
 
-      <div className="mb-4 flex gap-1 border-b border-neutral-200">
-        {VIEWS.map((kind) => (
-          <button
-            key={kind}
-            type="button"
-            onClick={() => void switchView(kind)}
-            className={
-              "rounded-t-md px-3 py-1.5 text-sm " +
-              (kind === view
-                ? "border-b-2 border-neutral-900 font-medium text-neutral-900"
-                : "text-neutral-500 hover:text-neutral-800")
-            }
-          >
-            {VIEW_LABELS[kind]}
-          </button>
-        ))}
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-auto">
-        {view === "checklist" ? (
-          <ChecklistView items={items} columns={columns} />
-        ) : view === "list" ? (
-          <ListView items={items} columns={columns} />
-        ) : view === "table" ? (
-          <TableView items={items} columns={columns} />
-        ) : (
-          <BoardView
-            items={items}
-            workspaceId={workspaceId}
-            collectionId={collectionId}
-            columns={columns}
+        <div className="mb-4 mt-3.5 flex items-center gap-3">
+          <SegmentedControl
+            options={VIEW_OPTIONS}
+            value={view}
+            onChange={(next) => void switchView(next)}
+            ariaLabel="Collection view"
           />
-        )}
+          <button
+            type="button"
+            onClick={() => void handleNewItem()}
+            className="ml-auto shrink-0 rounded-input bg-accent px-3.5 py-1.5 text-[12.5px] font-medium text-accent-contrast hover:bg-accent-hover"
+          >
+            + New item
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-auto pb-8">
+          {view === "checklist" ? (
+            <ChecklistView items={items} columns={columns} />
+          ) : view === "list" ? (
+            <ListView items={items} columns={columns} members={members} onOpenItem={setOpenItemId} />
+          ) : view === "table" ? (
+            <TableView items={items} columns={columns} members={members} onOpenItem={setOpenItemId} />
+          ) : (
+            <BoardView
+              items={items}
+              workspaceId={workspaceId}
+              collectionId={collectionId}
+              columns={columns}
+              members={members}
+              onOpenItem={setOpenItemId}
+            />
+          )}
+        </div>
       </div>
+
+      {openRow ? (
+        <TaskDetailModal
+          key={openRow.id}
+          row={openRow}
+          columns={columns}
+          members={members}
+          onClose={() => setOpenItemId(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -142,7 +155,9 @@ function CollectionName({ collectionId, name }: { collectionId: string; name: st
   useEffect(() => setValue(name), [name]);
 
   async function commit(): Promise<void> {
-    const trimmed = value.trim() || "Untitled";
+    // Save the trimmed value as-is (empty is allowed); the sidebar/breadcrumb display "Untitled"
+    // via `name || "Untitled"`, so an unnamed collection shows a placeholder rather than literal text.
+    const trimmed = value.trim();
     if (trimmed === name) return;
     await db.execute("UPDATE collections SET name = ?, updated_at = ? WHERE id = ?", [
       trimmed,
@@ -161,7 +176,7 @@ function CollectionName({ collectionId, name }: { collectionId: string; name: st
       }}
       placeholder="Untitled"
       aria-label="Collection name"
-      className="w-full bg-transparent text-2xl font-semibold text-neutral-900 outline-none placeholder:text-neutral-300"
+      className="w-full bg-transparent text-[28px] font-bold tracking-[-0.02em] text-ink outline-none placeholder:text-muted"
     />
   );
 }

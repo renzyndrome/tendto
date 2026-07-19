@@ -5,14 +5,64 @@
 import type { Column } from "./items/mutations";
 import { db } from "./powersync/client";
 
-/** Create a collection (defaults to the board view). Returns the new collection id. */
-export async function createCollection(workspaceId: string): Promise<string> {
+/**
+ * Starting shape for a new collection. A collection is a Notion-style database (one items
+ * primitive, four views); the template only seeds its initial view + columns — it's not a
+ * separate type. "Blank" deliberately does NOT impose a to-do workflow (a board isn't always a
+ * task list); "board" is the opinionated task template; "checklist" is a simple two-state list.
+ */
+export type CollectionTemplate = "blank" | "board" | "checklist";
+
+interface TemplateShape {
+  name: string;
+  default_view: string; // checklist | list | table | board
+  columns: Column[];
+}
+
+// Names are seeded EMPTY so the editor shows a placeholder (not literal text to delete); the
+// sidebar/breadcrumb render "Untitled" via `name || "Untitled"`. Blank's column is likewise
+// unnamed (placeholder "Column"); the task/checklist templates carry real, meaningful labels.
+export const COLLECTION_TEMPLATES: Record<CollectionTemplate, TemplateShape> = {
+  blank: { name: "", default_view: "board", columns: [{ id: "col", label: "" }] },
+  board: {
+    name: "",
+    default_view: "board",
+    columns: [
+      { id: "todo", label: "To do" },
+      { id: "doing", label: "In progress" },
+      { id: "done", label: "Done" },
+    ],
+  },
+  checklist: {
+    name: "",
+    default_view: "checklist",
+    columns: [
+      { id: "todo", label: "To do" },
+      { id: "done", label: "Done" },
+    ],
+  },
+};
+
+/** Create a collection from a starting template (defaults to Blank). Returns the new id. */
+export async function createCollection(
+  workspaceId: string,
+  template: CollectionTemplate = "blank",
+): Promise<string> {
+  const shape = COLLECTION_TEMPLATES[template];
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await db.execute(
-    `INSERT INTO collections (id, workspace_id, name, default_view, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [id, workspaceId, "Untitled", "board", now, now],
+    `INSERT INTO collections (id, workspace_id, name, default_view, config, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      workspaceId,
+      shape.name,
+      shape.default_view,
+      JSON.stringify({ columns: shape.columns }),
+      now,
+      now,
+    ],
   );
   return id;
 }
@@ -27,8 +77,9 @@ export async function deleteCollectionCascade(collectionId: string): Promise<voi
 
 // --- board columns (stored in collections.config) ------------------------------------------
 
-/** A fresh board column with a unique id. */
-export function newColumn(label: string): Column {
+/** A fresh board column with a unique id. Defaults to an EMPTY label so the header shows the
+ *  "Column" placeholder to name — not literal text the user has to clear first. */
+export function newColumn(label = ""): Column {
   return { id: crypto.randomUUID(), label };
 }
 
