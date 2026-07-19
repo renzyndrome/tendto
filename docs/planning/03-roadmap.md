@@ -68,9 +68,18 @@ Turn it from a notebook into a light workspace — and make it multi-user.
 > **Status (2026-07-09):** collections shipped — one `items` primitive rendered as four views
 > (checklist, list, table, kanban board with drag-between-columns), inline editing everywhere,
 > all instant from the replica and synced through the *existing* generic write path (zero backend
-> change — collections/items already had models, sync rules, and schema). Still open in Phase 2:
-> shared-workspace **invitations/roles** (better-auth org + email), **presence**, and
-> **comments/@mentions** — each needs new infra, so each is its own pass.
+> change — collections/items already had models, sync rules, and schema).
+>
+> **Status (2026-07-19):** **shared workspaces** shipped — multi-workspace creation + a sidebar
+> switcher, single-use **invite links** with owner/editor/viewer **roles** (FastAPI `/workspaces`
+> + `/workspaces/invites`, migration `0003_invites`), a **Share modal**, and an `/invite/:token`
+> accept flow. `memberships`/`workspaces` are now **server-authoritative** (removed from the
+> sync-upload allowlist so an editor can't forge a membership to self-promote). Task management
+> deepened: member-based **assignees** (multi-select) + a Trello-style **task detail modal**
+> (title / status / due / assignees / description) shared across all four views; item writes made
+> atomic via SQLite `json_set` (fixes whole-bag clobbering on rapid edits). Still open in Phase 2:
+> **presence** and **comments/@mentions**. "My tasks" (assigned-to-me) view on Home is the next
+> assignee follow-up.
 
 ## Phase 3 — Calendar, the AI summary & polish
 
@@ -118,6 +127,14 @@ daily recap each evening.
 > written up in `docs/desktop.md`, clearly marked alpha. Also shipped since Phase 3: **focus mode**
 > (Pomodoro + in-session tasks), **custom kanban columns**, editable kanban cards, inline images,
 > page titles/nesting/delete — each behind the clutter test, each E2E-gated.
+
+> **Design status (2026-07-19):** the **Meadow** visual direction (from `design/design_handoff_tendto/`)
+> is implemented as a token-driven design system — warm-paper light + dark, five accents, document
+> typeface / density / editor-width, all live-switchable in **Appearance settings** (per device).
+> Ships the sidebar/editor/board/table/list, a ⌘K quick switcher, first-run **onboarding** (welcome
+> + coach-mark tour), and a mobile PWA layout. Dev ergonomics: `make dev` boots the whole stack;
+> API tests now run against an isolated `tendto_test` DB (a guard refuses to truncate anything not
+> ending in `_test`, after a run once wiped dev data).
 
 ---
 
