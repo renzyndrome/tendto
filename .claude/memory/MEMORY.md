@@ -8,3 +8,7 @@ One line per memory. Full content in the linked files; keep this index lean.
 - [Auth & sync redesign](auth-and-sync-redesign.md) — Clerk → better-auth (scale pricing); PowerSync kept (only engine passing offline); JWKS wiring
 - [Phase 1 build](phase-1-build.md) — what shipped in the MVP; block-id=BlockNote string, /bootstrap chicken/egg, cross-tenant pin, editor hydrate/persist, pinned web versions
 - [Desktop shell plan](desktop-shell-plan.md) — Rust via Tauri 2 + first-party PowerSync Tauri plugin (alpha); never @powersync/web in a webview; WebKitGTK is the risk
+- [Local dev setup](local-dev-setup.md) — fresh-machine traps: better-auth CLI hangs on a TTY, venv at apps/api/.venv, the PowerSync publication no migration creates, `make test` wipes the dev DB
+- [Theming](theming.md) — semantic colour tokens (never name a shade, never `dark:`); BlockNote must be handed our resolved theme or it follows the OS on its own
+- [Workspace creation](workspace-creation.md) — why it needs POST /workspaces instead of a local write; the concurrent-/bootstrap race that produced duplicate "My Workspace" rows
+- [Reminders & card fields](reminders-and-card-fields.md) — due date+optional time format, assignee picker, and why due reminders are device-local, coalesced and opt-in
