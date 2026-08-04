@@ -20,6 +20,14 @@ class Settings(BaseSettings):
     ai_base_url: str = ""
     ai_api_key: str = ""
     ai_model: str = "gpt-4o-mini"
+    # Transactional email (workspace invites). An empty email_api_key selects the offline
+    # ConsoleProvider — the invite is still created and its link still works, it just isn't
+    # delivered, so dev and tests stay network-free (same contract as ai_api_key above).
+    email_api_key: str = ""
+    email_from: str = "TendTo <invites@tendto.app>"
+    email_base_url: str = "https://api.resend.com"
+    # How long an invite link stays valid.
+    invite_ttl_hours: int = 168  # 7 days
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

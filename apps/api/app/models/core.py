@@ -10,7 +10,16 @@ Invariants (CLAUDE.md):
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -47,6 +56,35 @@ class Membership(TimestampMixin, Base):
     )
     role: Mapped[str] = mapped_column(String(16), nullable=False, default="owner")
     # roles: owner | editor | viewer (commenter later)
+
+
+class WorkspaceInvitation(TimestampMixin, Base):
+    """A pending invitation to join a workspace.
+
+    Deliberately NOT a synced table: it holds other people's email addresses and a bearer
+    token, neither of which belongs on every member's device. It is therefore absent from
+    sync-rules.yaml and the client schema — the settings panel reads it over the API.
+    """
+
+    __tablename__ = "workspace_invitations"
+    __table_args__ = (
+        Index("ix_workspace_invitations_workspace", "workspace_id"),
+        Index("ix_workspace_invitations_email", "email"),
+        # One live invite per (workspace, email); re-inviting updates the existing row.
+        UniqueConstraint("workspace_id", "email", name="uq_workspace_invitation_email"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    # Stored lowercased; matched against the accepting user's email.
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False, default="editor")
+    # Unguessable bearer token from the invite link. Unique so a lookup can't be ambiguous.
+    token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    invited_by: Mapped[str] = mapped_column(String(64), nullable=False)  # better-auth user id
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class Page(TimestampMixin, Base):
