@@ -28,8 +28,28 @@ docs/
 
 ## Quick start (dev)
 
+First time only:
+
 ```bash
-cp .env.example .env          # fill in values
+cp .env.example .env                                   # fill in values
+python3 -m venv apps/api/.venv                         # the scripts expect the venv HERE
+apps/api/.venv/bin/pip install -e "apps/api[dev]"
+curl -fsSL https://bun.sh/install | bash               # apps/auth runs on Bun
+(cd apps/auth && bun install)
+(cd apps/web  && npm install)
+```
+
+Then, every day:
+
+```bash
+make dev        # boots db+mongo+powersync+auth+api, runs migrations, then Vite in the foreground
+                # Ctrl-C stops Vite only; the backend stays up for the next `make dev` (~3s)
+make dev-down   # stop the backend + docker (keeps data)
+```
+
+Individual pieces, if you'd rather run them in separate terminals:
+
+```bash
 make db                       # postgres (:15432) + powersync (:18080) via docker compose
 make api                      # FastAPI on :18000
 make auth                     # better-auth service on :13001
