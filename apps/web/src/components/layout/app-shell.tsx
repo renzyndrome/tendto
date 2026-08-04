@@ -2,12 +2,20 @@
 import { Outlet } from "@tanstack/react-router";
 import { useEffect } from "react";
 
+import { startDueWatcher } from "../../lib/items/due-watcher";
 import { useUiStore } from "../../stores/ui";
 import { SearchPalette } from "../search/search-palette";
 import { Sidebar } from "./sidebar";
 
 export function AppShell() {
   const setSearchOpen = useUiStore((s) => s.setSearchOpen);
+
+  // Due reminders run for as long as the app is open. Reads the active workspace lazily via
+  // the store so switching workspaces doesn't restart the timer.
+  useEffect(
+    () => startDueWatcher(() => useUiStore.getState().activeWorkspaceId),
+    [],
+  );
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -21,7 +29,7 @@ export function AppShell() {
   }, [setSearchOpen]);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-white text-neutral-900">
+    <div className="flex h-screen w-screen overflow-hidden bg-app text-fg">
       <Sidebar />
       <main className="h-full flex-1 overflow-y-auto">
         <Outlet />

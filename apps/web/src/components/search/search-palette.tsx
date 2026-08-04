@@ -88,7 +88,7 @@ export function SearchPalette() {
     >
       <div
         onClick={(event) => event.stopPropagation()}
-        className="w-full max-w-lg overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xl"
+        className="w-full max-w-lg overflow-hidden rounded-xl border border-line bg-elevated shadow-xl"
       >
         <input
           ref={inputRef}
@@ -102,12 +102,12 @@ export function SearchPalette() {
           }}
           placeholder="Search pages, items, blocks…"
           aria-label="Search query"
-          className="w-full border-b border-neutral-100 px-4 py-3 text-sm text-neutral-900 outline-none placeholder:text-neutral-400"
+          className="w-full border-b border-line px-4 py-3 text-sm text-fg outline-none placeholder:text-subtle"
         />
 
         <div className="max-h-[52vh] overflow-y-auto py-2">
           {trimmed && !hasResults ? (
-            <p className="px-4 py-6 text-center text-sm text-neutral-400">No results</p>
+            <p className="px-4 py-6 text-center text-sm text-subtle">No results</p>
           ) : null}
 
           <ResultGroup label="Pages">
@@ -127,7 +127,7 @@ export function SearchPalette() {
           </ResultGroup>
         </div>
 
-        <div className="border-t border-neutral-100 px-4 py-2 text-xs text-neutral-400">
+        <div className="border-t border-line px-4 py-2 text-xs text-subtle">
           Enter to open · Esc to close
         </div>
       </div>
@@ -140,7 +140,7 @@ function ResultGroup({ label, children }: { label: string; children: ReactNode }
   if (items.length === 0) return null;
   return (
     <section className="mb-1">
-      <div className="px-4 py-1 text-xs font-medium uppercase tracking-wide text-neutral-400">
+      <div className="px-4 py-1 text-xs font-medium uppercase tracking-wide text-subtle">
         {label}
       </div>
       <ul>{children}</ul>
@@ -162,9 +162,9 @@ function ResultRow({
       <button
         type="button"
         onClick={onSelect}
-        className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-100"
+        className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-muted hover:bg-hover"
       >
-        <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-neutral-500">
+        <span className="shrink-0 rounded bg-hover px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted">
           {badge}
         </span>
         <span className="truncate">{label || "Untitled"}</span>

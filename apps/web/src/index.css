@@ -2,6 +2,63 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: light;
+@layer base {
+  /*
+   * Semantic colour tokens. Components reference the ROLE (bg-surface, text-muted) via the
+   * Tailwind mapping in tailwind.config.js — never a raw shade — so light and dark stay in
+   * sync from one definition. Values are space-separated RGB channels so Tailwind's
+   * `<alpha-value>` opacity modifiers keep working.
+   */
+  :root {
+    color-scheme: light;
+
+    --c-app: 255 255 255; /* page background */
+    --c-surface: 250 250 250; /* sidebar, board columns */
+    --c-elevated: 255 255 255; /* cards, modals — sits above surface */
+    --c-line: 229 229 229; /* borders + dividers */
+    --c-hover: 229 229 229; /* hover wash on interactive rows */
+    --c-fg: 23 23 23; /* primary text */
+    --c-muted: 82 82 82; /* secondary text */
+    --c-subtle: 163 163 163; /* placeholders, meta, empty states */
+    --c-danger: 220 38 38;
+    --c-accent: 23 23 23; /* primary button fill */
+    --c-on-accent: 255 255 255; /* text on the accent fill */
+  }
+
+  .dark {
+    color-scheme: dark;
+
+    --c-app: 10 10 10;
+    --c-surface: 23 23 23;
+    --c-elevated: 38 38 38;
+    --c-line: 55 55 55;
+    --c-hover: 64 64 64;
+    --c-fg: 245 245 245;
+    --c-muted: 190 190 190;
+    --c-subtle: 130 130 130;
+    --c-danger: 248 113 113;
+    --c-accent: 245 245 245;
+    --c-on-accent: 23 23 23;
+  }
+
+  /* Paint the document itself so overscroll and the BlockNote gutter match the theme. */
+  html,
+  body {
+    @apply bg-app text-fg;
+  }
+}
+
+/*
+ * BlockNote theming. We pass `theme` explicitly (see page-editor.tsx) so its menus and
+ * toolbars follow our mode, but its themes also paint the editor SURFACE — in dark that's
+ * #1f1f1f, which reads as a floating card on our near-black page while light blends
+ * invisibly. Re-bind just the editor surface to our tokens so the editor sits ON the page in
+ * both themes; menus/tooltips keep BlockNote's own styling.
+ *
+ * Specificity (0,3,0) deliberately beats BlockNote's own `.bn-container.dark` (0,2,0) so this
+ * wins regardless of stylesheet order in the bundle.
+ */
+.bn-root.bn-container[data-color-scheme] {
+  --bn-colors-editor-background: transparent;
+  --bn-colors-editor-text: rgb(var(--c-fg));
 }

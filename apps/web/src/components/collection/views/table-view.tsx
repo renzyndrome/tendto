@@ -5,16 +5,26 @@ import {
   type Column,
   type ItemRow,
 } from "../../../lib/items/mutations";
+import { AssigneePicker } from "./assignee-picker";
+import { DuePicker } from "./due-picker";
 import { InlineText } from "./inline-text";
 
-export function TableView({ items, columns }: { items: ItemRow[]; columns: Column[] }) {
+export function TableView({
+  items,
+  columns,
+  workspaceId,
+}: {
+  items: ItemRow[];
+  columns: Column[];
+  workspaceId: string | null;
+}) {
   if (items.length === 0) {
-    return <p className="py-10 text-center text-sm text-neutral-400">No items yet — add one above.</p>;
+    return <p className="py-10 text-center text-sm text-subtle">No items yet — add one above.</p>;
   }
   return (
     <table data-testid="table" className="w-full border-collapse text-sm">
       <thead>
-        <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-400">
+        <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-subtle">
           <th className="py-2 pr-4 font-medium">Title</th>
           <th className="py-2 pr-4 font-medium">Status</th>
           <th className="py-2 pr-4 font-medium">Due</th>
@@ -26,20 +36,20 @@ export function TableView({ items, columns }: { items: ItemRow[]; columns: Colum
           const props = parseProperties(row);
           const known = columns.some((c) => c.id === props.status);
           return (
-            <tr key={row.id} className="border-b border-neutral-100">
+            <tr key={row.id} className="border-b border-line">
               <td className="py-1 pr-4">
                 <InlineText
                   value={props.title}
                   onCommit={(title) => void patchItem(row, { title })}
                   placeholder="Untitled"
-                  className="w-full bg-transparent px-1 py-0.5 text-sm text-neutral-800 outline-none placeholder:text-neutral-300 focus:bg-neutral-50"
+                  className="w-full bg-transparent px-1 py-0.5 text-sm text-fg outline-none placeholder:text-subtle focus:bg-surface"
                 />
               </td>
               <td className="py-1 pr-4">
                 <select
                   value={props.status}
                   onChange={(e) => void patchItem(row, { status: e.target.value })}
-                  className="rounded border border-neutral-200 bg-white px-1.5 py-1 text-sm text-neutral-700"
+                  className="rounded border border-line bg-elevated px-1.5 py-1 text-sm text-muted"
                 >
                   {/* Keep an orphaned status visible until the user re-picks a column. */}
                   {known ? null : <option value={props.status}>{props.status}</option>}
@@ -51,19 +61,20 @@ export function TableView({ items, columns }: { items: ItemRow[]; columns: Colum
                 </select>
               </td>
               <td className="py-1 pr-4">
-                <input
-                  type="date"
-                  value={props.due ?? ""}
-                  onChange={(e) => void patchItem(row, { due: e.target.value })}
-                  className="rounded border border-neutral-200 px-1.5 py-1 text-sm text-neutral-700"
+                <DuePicker
+                  value={typeof props.due === "string" ? props.due : ""}
+                  onChange={(due) => void patchItem(row, { due })}
+                  compact
+                  idPrefix={`row-due-${row.id}`}
                 />
               </td>
               <td className="py-1 pr-4">
-                <InlineText
-                  value={props.assignee ?? ""}
-                  onCommit={(assignee) => void patchItem(row, { assignee })}
-                  placeholder="—"
-                  className="w-full bg-transparent px-1 py-0.5 text-sm text-neutral-700 outline-none placeholder:text-neutral-300 focus:bg-neutral-50"
+                <AssigneePicker
+                  workspaceId={workspaceId}
+                  value={typeof props.assignee === "string" ? props.assignee : ""}
+                  onChange={(assignee) => void patchItem(row, { assignee })}
+                  ariaLabel="Row assignee"
+                  className="w-full rounded border border-line bg-app px-1.5 py-1 text-sm text-muted outline-none"
                 />
               </td>
             </tr>

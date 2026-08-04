@@ -61,3 +61,19 @@ class Connector implements PowerSyncBackendConnector {
 export async function connectDb(): Promise<void> {
   await db.connect(new Connector());
 }
+
+/**
+ * Sign-out teardown. MUST clear the replica, not just disconnect: the local SQLite file is
+ * this device's copy of one user's workspaces, so leaving it in place would (a) expose the
+ * previous account's content to whoever signs in next on a shared device, and (b) leave rows
+ * that no longer exist server-side sitting in the replica forever — they are only ever
+ * removed by a bucket update, which a signed-out client never receives.
+ */
+export async function disconnectAndClearDb(): Promise<void> {
+  try {
+    await db.disconnectAndClear();
+  } catch (err) {
+    // Never block sign-out on teardown; the session is already gone.
+    console.error("Failed to clear the local replica on sign out", err);
+  }
+}

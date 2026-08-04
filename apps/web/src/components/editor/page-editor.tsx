@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { loadBlocks, persistBlocks, rowToBlock, type BlockRow } from "../../lib/blocks/serialize";
 import { renamePage } from "../../lib/pages";
 import { db } from "../../lib/powersync/client";
+import { useThemeStore } from "../../stores/theme";
 import { useUiStore } from "../../stores/ui";
 import { Spinner } from "../ui/spinner";
 
@@ -89,6 +90,9 @@ interface PageEditorInnerProps {
 
 function PageEditorInner({ pageId, initialBlocks, initialTitle }: PageEditorInnerProps) {
   const workspaceId = useUiStore((s) => s.activeWorkspaceId);
+  // BlockNote/Mantine otherwise picks its own theme from `prefers-color-scheme`, which renders
+  // a dark editor inside a light shell whenever the OS is dark. Drive it from OUR theme.
+  const theme = useThemeStore((s) => s.resolved);
 
   const initialContent = useMemo(
     () => (initialBlocks.length > 0 ? initialBlocks.map(rowToBlock) : undefined),
@@ -120,7 +124,7 @@ function PageEditorInner({ pageId, initialBlocks, initialTitle }: PageEditorInne
   return (
     <div className="mx-auto min-h-full max-w-3xl px-6 py-10">
       <PageTitle pageId={pageId} initialTitle={initialTitle} />
-      <BlockNoteView editor={editor} onChange={handleChange} />
+      <BlockNoteView editor={editor} onChange={handleChange} theme={theme} />
     </div>
   );
 }
@@ -152,7 +156,7 @@ function PageTitle({ pageId, initialTitle }: { pageId: string; initialTitle: str
       placeholder="Untitled"
       aria-label="Page title"
       data-testid="page-title"
-      className="mb-3 w-full bg-transparent text-3xl font-bold text-neutral-900 outline-none placeholder:text-neutral-300"
+      className="mb-3 w-full bg-transparent text-3xl font-bold text-fg outline-none placeholder:text-subtle"
     />
   );
 }

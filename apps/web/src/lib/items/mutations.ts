@@ -23,7 +23,7 @@ export const DEFAULT_COLUMNS: Column[] = [
 ];
 
 const COLUMN_PALETTE = [
-  "bg-neutral-300",
+  "bg-subtle",
   "bg-amber-400",
   "bg-emerald-500",
   "bg-sky-400",
@@ -33,7 +33,7 @@ const COLUMN_PALETTE = [
 
 /** A stable dot color for the column at `index` (cycles through the palette). */
 export function columnColor(index: number): string {
-  if (index < 0) return "bg-neutral-300";
+  if (index < 0) return "bg-subtle";
   return COLUMN_PALETTE[index % COLUMN_PALETTE.length];
 }
 

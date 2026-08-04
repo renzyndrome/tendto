@@ -65,20 +65,20 @@ export function CalendarView() {
   return (
     <div className="mx-auto flex h-full max-w-5xl flex-col px-6 py-8">
       <header className="mb-4 flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold text-neutral-900">{formatMonthLabel(viewDate)}</h1>
+        <h1 className="text-2xl font-semibold text-fg">{formatMonthLabel(viewDate)}</h1>
         <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={() => setViewDate((d) => addMonths(d, -1))}
             aria-label="Previous month"
-            className="rounded-md px-2 py-1 text-sm text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
+            className="rounded-md px-2 py-1 text-sm text-muted hover:bg-hover hover:text-fg"
           >
             ‹
           </button>
           <button
             type="button"
             onClick={() => setViewDate(new Date())}
-            className="rounded-md px-3 py-1 text-sm text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900"
+            className="rounded-md px-3 py-1 text-sm text-muted hover:bg-hover hover:text-fg"
           >
             Today
           </button>
@@ -86,18 +86,18 @@ export function CalendarView() {
             type="button"
             onClick={() => setViewDate((d) => addMonths(d, 1))}
             aria-label="Next month"
-            className="rounded-md px-2 py-1 text-sm text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
+            className="rounded-md px-2 py-1 text-sm text-muted hover:bg-hover hover:text-fg"
           >
             ›
           </button>
         </div>
       </header>
 
-      <div className="grid grid-cols-7 border-l border-t border-neutral-200 text-xs">
+      <div className="grid grid-cols-7 border-l border-t border-line text-xs">
         {WEEKDAYS.map((weekday) => (
           <div
             key={weekday}
-            className="border-b border-r border-neutral-200 bg-neutral-50 px-2 py-1 font-medium text-neutral-400"
+            className="border-b border-r border-line bg-surface px-2 py-1 font-medium text-subtle"
           >
             {weekday}
           </div>
@@ -113,8 +113,8 @@ export function CalendarView() {
               key={key}
               data-testid={`cal-day-${key}`}
               className={
-                "min-h-[92px] border-b border-r border-neutral-200 p-1 " +
-                (inMonth ? "bg-white" : "bg-neutral-50/40")
+                "min-h-[92px] border-b border-r border-line p-1 " +
+                (inMonth ? "bg-app" : "bg-surface/40")
               }
             >
               <div className="mb-1 flex justify-end">
@@ -122,10 +122,10 @@ export function CalendarView() {
                   className={
                     "inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1 text-xs " +
                     (isToday
-                      ? "bg-neutral-900 font-medium text-white"
+                      ? "bg-accent font-medium text-on-accent"
                       : inMonth
-                        ? "text-neutral-500"
-                        : "text-neutral-300")
+                        ? "text-muted"
+                        : "text-subtle")
                   }
                 >
                   {day.getDate()}
@@ -136,7 +136,7 @@ export function CalendarView() {
                   <CalendarChip key={item.id} item={item} onOpen={openCollection} />
                 ))}
                 {dayItems.length > 3 ? (
-                  <div className="px-1 text-[11px] text-neutral-400">
+                  <div className="px-1 text-[11px] text-subtle">
                     +{dayItems.length - 3} more
                   </div>
                 ) : null}
@@ -161,9 +161,9 @@ function CalendarChip({
       type="button"
       onClick={() => onOpen(item.collectionId)}
       title={item.title}
-      className="flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] text-neutral-700 hover:bg-neutral-100"
+      className="flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] text-muted hover:bg-hover"
     >
-      <span className="h-2 w-2 shrink-0 rounded-full bg-neutral-400" aria-hidden />
+      <span className="h-2 w-2 shrink-0 rounded-full bg-subtle" aria-hidden />
       <span className="truncate">{item.title}</span>
     </button>
   );

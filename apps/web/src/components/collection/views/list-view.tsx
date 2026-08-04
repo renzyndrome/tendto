@@ -1,4 +1,5 @@
 /** List view: a compact read of each item — a column-colored status dot, title, assignee + due. */
+import { formatDueLabel } from "../../../lib/items/due";
 import {
   columnColor,
   parseProperties,
@@ -10,10 +11,10 @@ export function ListView({ items, columns }: { items: ItemRow[]; columns: Column
   const indexById = new Map(columns.map((c, i) => [c.id, i]));
 
   if (items.length === 0) {
-    return <p className="py-10 text-center text-sm text-neutral-400">No items yet — add one above.</p>;
+    return <p className="py-10 text-center text-sm text-subtle">No items yet — add one above.</p>;
   }
   return (
-    <ul className="divide-y divide-neutral-100">
+    <ul className="divide-y divide-line">
       {items.map((row) => {
         const props = parseProperties(row);
         const index = indexById.get(props.status) ?? -1;
@@ -24,11 +25,13 @@ export function ListView({ items, columns }: { items: ItemRow[]; columns: Column
               title={columns[index]?.label ?? props.status}
               aria-hidden
             />
-            <span className="flex-1 truncate text-sm text-neutral-800">
+            <span className="flex-1 truncate text-sm text-fg">
               {props.title || "Untitled"}
             </span>
-            {props.assignee ? <span className="text-xs text-neutral-400">{props.assignee}</span> : null}
-            {props.due ? <span className="text-xs text-neutral-400">{props.due}</span> : null}
+            {props.assignee ? <span className="text-xs text-subtle">{props.assignee}</span> : null}
+            {props.due ? (
+              <span className="text-xs text-subtle">{formatDueLabel(props.due)}</span>
+            ) : null}
           </li>
         );
       })}

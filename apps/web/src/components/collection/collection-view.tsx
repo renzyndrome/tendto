@@ -65,7 +65,7 @@ export function CollectionView({ collectionId }: { collectionId: string }) {
   if (!collection) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-neutral-400">This collection no longer exists.</p>
+        <p className="text-sm text-subtle">This collection no longer exists.</p>
       </div>
     );
   }
@@ -92,13 +92,13 @@ export function CollectionView({ collectionId }: { collectionId: string }) {
         <button
           type="button"
           onClick={() => void handleNewItem()}
-          className="shrink-0 rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700"
+          className="shrink-0 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90"
         >
           + New item
         </button>
       </header>
 
-      <div className="mb-4 flex gap-1 border-b border-neutral-200">
+      <div className="mb-4 flex gap-1 border-b border-line">
         {VIEWS.map((kind) => (
           <button
             key={kind}
@@ -107,8 +107,8 @@ export function CollectionView({ collectionId }: { collectionId: string }) {
             className={
               "rounded-t-md px-3 py-1.5 text-sm " +
               (kind === view
-                ? "border-b-2 border-neutral-900 font-medium text-neutral-900"
-                : "text-neutral-500 hover:text-neutral-800")
+                ? "border-b-2 border-fg font-medium text-fg"
+                : "text-muted hover:text-fg")
             }
           >
             {VIEW_LABELS[kind]}
@@ -122,7 +122,7 @@ export function CollectionView({ collectionId }: { collectionId: string }) {
         ) : view === "list" ? (
           <ListView items={items} columns={columns} />
         ) : view === "table" ? (
-          <TableView items={items} columns={columns} />
+          <TableView items={items} columns={columns} workspaceId={workspaceId} />
         ) : (
           <BoardView
             items={items}
@@ -161,7 +161,7 @@ function CollectionName({ collectionId, name }: { collectionId: string; name: st
       }}
       placeholder="Untitled"
       aria-label="Collection name"
-      className="w-full bg-transparent text-2xl font-semibold text-neutral-900 outline-none placeholder:text-neutral-300"
+      className="w-full bg-transparent text-2xl font-semibold text-fg outline-none placeholder:text-subtle"
     />
   );
 }
