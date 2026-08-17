@@ -61,11 +61,35 @@ make web                      # Vite dev server on :15173
 One Dokploy Compose service from `docker-compose.prod.yml` (Postgres + PowerSync + auth + API
 + static web). See [docs/deploy-dokploy.md](./docs/deploy-dokploy.md).
 
+## Testing
+
+```bash
+make test                          # API tests + web typecheck
+cd apps/web && npx playwright test # end-to-end (boot the stack first: make e2e-stack)
+```
+
+`make test` runs against a dedicated `tendto_test` database and **refuses** to target the one in
+`DATABASE_URL` — the suite truncates every table, and it once destroyed real local content.
+
 ## Current phase
 
-**Phase 0 — prove the sync loop** (see [roadmap](./docs/planning/03-roadmap.md)):
-BlockNote → local SQLite → PowerSync → FastAPI → Postgres → second device.
-Done means: instant local editing, ~1s cross-device update, airplane-mode merge on reconnect.
+**Phases 0–3 are largely shipped** (see [roadmap](./docs/planning/03-roadmap.md)):
+
+- **Sync loop** — BlockNote → local SQLite → PowerSync → FastAPI → Postgres → second device,
+  including the airplane-mode merge.
+- **MVP** — accounts, nested pages, the curated block editor, installable PWA.
+- **Collections** — one `items` primitive as checklist / list / table / kanban, plus a card
+  detail dialog with a rich description, assignee and due date + optional time.
+- **Shared workspaces** — multiple workspaces, members and roles, invitations by email.
+- **Organize + intelligence** — unified calendar, instant search, export, the daily AI summary.
+- Plus light/dark theming and opt-in due/Pomodoro reminders.
+
+Still open: presence, comments/@mentions, RLS hardening, pgvector semantic search, Stripe, and
+the scheduled delivery of the daily summary — each needs live services or its own infra pass.
+Native shells (Phase 4) are untouched by design.
+
+> Running build state, open engineering items and the traps worth knowing before you touch the
+> editor or sync live in [`.claude/memory/`](./.claude/memory/) — start with `current-state.md`.
 
 ## Guiding principle
 

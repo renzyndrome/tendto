@@ -50,6 +50,18 @@ Each phase has a clear "done." Infra comes online exactly when the product needs
 **Runs in parallel from Phase 2 onward (going public):** multi-tenant **RLS** isolation, **Stripe**
 billing, transactional **email**, rate-limiting, and GDPR-style export/delete (doc 05 §4).
 
+> **Where this actually stands (2026-08-17).** Phases 0–2 are shipped, and Phase 3's headliners
+> with them: the sync loop, MVP editor + PWA, collections in four views, shared workspaces with
+> invitations, the unified calendar, instant search, export, and the daily AI summary. Transactional
+> **email** arrived early (with invitations) as a provider-agnostic port with an offline fallback,
+> so no key is needed in dev.
+>
+> Still open, and each needs live services or its own infra pass: **presence**,
+> **comments/@mentions**, **RLS hardening**, **pgvector** semantic search, **Stripe**, the
+> backup/restore drill, and the scheduled delivery of the daily summary. Phase 4 (native shells)
+> is untouched by design — see [`.claude/memory/current-state.md`](../../.claude/memory/current-state.md)
+> for the running build state and open engineering items.
+
 ---
 
 ## C. Start here

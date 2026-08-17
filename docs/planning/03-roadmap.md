@@ -25,6 +25,11 @@ away afterward.*
 > since the scaffold already de-risks it): FastAPI `POST /sync/upload` (membership/role + LWW
 > upsert, 17 tests green), Alembic migration, BlockNote⇄replica editor. Left to run live: stand up
 > `apps/auth` (Bun) + the PowerSync container and watch the two-device / airplane-mode tests.
+>
+> **Status (2026-08-17): closed.** The whole stack runs locally with one command (`make dev`), and
+> both tests are automated rather than watched by hand — `e2e/sync-loop.spec.ts` drives a second
+> browser context for the cross-device update, and `e2e/offline.spec.ts` covers the airplane-mode
+> queue-and-merge.
 
 ## Phase 1 — MVP: your tasks, on every device, instantly
 
@@ -47,6 +52,12 @@ phone that you created on your laptop, and doing so in a dead zone doesn't matte
 > /bootstrap` provisioning the personal workspace, app shell + reactive page sidebar, and the
 > block editor persisting to the replica. Remaining Phase-1 polish: pages *tree* (nesting), the
 > curated block set/toolbar tuning, PWA install check, and a live end-to-end run.
+>
+> **Status (2026-08-17): closed.** Nested pages (`parent_id`, collapsible tree), the curated block
+> set with markdown shortcuts and inline images, and the installable PWA are all in. `/bootstrap`
+> is now concurrency-safe — the client calls it from an effect that React StrictMode
+> double-invokes, and check-then-insert without serialisation gave every dev user two identical
+> "My Workspace" rows.
 
 ## Phase 2 — Collections, kanban & the startup workflow
 
@@ -71,6 +82,28 @@ Turn it from a notebook into a light workspace — and make it multi-user.
 > change — collections/items already had models, sync rules, and schema). Still open in Phase 2:
 > shared-workspace **invitations/roles** (better-auth org + email), **presence**, and
 > **comments/@mentions** — each needs new infra, so each is its own pass.
+>
+> **Status (2026-08-17): shared workspaces are done.** Multiple workspaces (create / switch /
+> rename / delete), a members panel with roles, and a full **invite → email → accept** flow.
+> Enforcement is where doc 02/05 says: FastAPI on upload, sync rules on download.
+>
+> Two things worth recording because they amend the plan as written:
+>
+> 1. **Workspace invitations are owned by FastAPI, not better-auth's organization plugin**
+>    (which doc 05 §3 names for "orgs/invites"). That plugin invites to an `organizationId`, but
+>    tenancy here is `memberships(user, workspace, role)` and `workspaces` still has no `org_id`
+>    — so using it would mean one better-auth org per workspace *and* workspace/role semantics
+>    living inside `apps/auth`, which is infrastructure only. When Organizations actually land,
+>    the org plugin can own ORG membership while workspace membership stays in the API.
+> 2. **Email is provider-agnostic with an offline fallback**, mirroring the AI layer (doc 06): an
+>    empty `EMAIL_API_KEY` logs the mail and returns the invite URL so the UI can offer a copy
+>    link. Dev and the whole test suite stay network-free; a Resend key makes it send for real.
+>
+> Also shipped in this pass, all Phase-2-adjacent: **card detail** (a dialog per item at
+> `/c/$collectionId/i/$itemId` with a rich description — see the guardrail note below), the
+> **startup task workflow** fields (assignee picked from workspace members, due date + optional
+> time), and **light/dark theming**. Still open in Phase 2: **presence** and
+> **comments/@mentions**.
 
 ## Phase 3 — Calendar, the AI summary & polish
 
@@ -120,7 +153,23 @@ daily recap each evening.
 - ❌ AI sprayed across the editing surface — the *only* default AI is the once-a-day summary.
 - ❌ Endlessly configurable databases (relations-of-relations, formula sprawl) — pick the 80% and stop.
 - ❌ Collaboration *noise* — activity feeds, notification systems, granular field-level governance.
+
+  > **Clarified 2026-08-17, because we shipped something adjacent.** Desktop reminders now exist
+  > for items due *today* and for Pomodoro phase changes. The line we drew: this bullet rules out
+  > being told **what other people did** — feeds, badges, digests. It does not rule out being told
+  > **your own deadline just arrived**, which is the point of putting a due date on a task at all.
+  > Kept honest by construction: opt-in (browser grant *and* an in-app switch), device-local (no
+  > server job, no push channel), today-only so a backlog can't notify in bulk, silent for
+  > anything already done, and one notification per item. If it ever grows a digest or a badge
+  > count, it has crossed the line.
 - ❌ Feature parity with Notion as a goal. Parity is the trap (doc 01 §3). **Focus is the moat.**
+- ❌ **The Trello card.** Cards open a detail dialog (added 2026-08-17) carrying a title, a rich
+  description, status, due and assignee — and deliberately *not* labels, per-card checklists,
+  attachments or a comment/activity panel. The first is the "configurable database" sprawl above;
+  attachments need object storage that doesn't exist yet; the feed is the noise bullet. Per-card
+  checklists are refused on structural grounds, not taste: collections are "one primitive, many
+  views", so a checklist nailed inside a card would be a second checklist concept that no view
+  can render and the calendar can't see. Sub-tasks belong in the collection.
 
 ## The recurring decision rule
 

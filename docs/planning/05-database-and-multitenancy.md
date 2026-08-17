@@ -52,6 +52,21 @@ Personal user ───────────────────►├─
 Entities: `users`, `organizations`, `workspaces`, `memberships`, `pages`, `blocks`, `collections`,
 `items`, `comments`, `invitations`, plus billing tables.
 
+> **As built (2026-08-17).** `organizations` does not exist yet — `workspaces` has no `org_id`,
+> and membership is workspace-level only. Two refinements landed with shared workspaces and card
+> detail:
+>
+> - **`workspace_invitations`** is a first-class table owned by FastAPI (see doc 03, Phase 2
+>   status, for why it is not better-auth's organization plugin). It is deliberately **not
+>   synced** — it holds other people's email addresses and a bearer token, which have no business
+>   on every member's device — so it is absent from `sync-rules.yaml` and the client schema, and
+>   the settings panel reads it over the API.
+> - **A block belongs to exactly one owner: a page *or* an item.** `blocks.page_id` became
+>   nullable, `blocks.item_id` was added, and a CHECK enforces the XOR in the database (both
+>   columns arrive from a client). A card's description is therefore the same primitive as a
+>   page's body — same editor, same blocks, same sync path — rather than a parallel rich-text
+>   column. The tree above becomes `Page ──< Block` **and** `Item ──< Block`.
+
 ### Isolation — enforced at three layers
 
 Tenancy has two flows, and each has a boundary, with RLS as the backstop behind both:
