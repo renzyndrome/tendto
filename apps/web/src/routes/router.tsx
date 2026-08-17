@@ -15,7 +15,7 @@ const indexRoute = createRoute({
   component: function IndexRoute() {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-neutral-400">Select a page, or create a new one.</p>
+        <p className="text-sm text-subtle">Select a page, or create a new one.</p>
       </div>
     );
   },
@@ -39,6 +39,19 @@ const collectionRoute = createRoute({
   },
 });
 
+/**
+ * A card's detail dialog is a ROUTE, not component state — so it is linkable, browser Back
+ * closes it, and a refresh reopens the same card (Trello's `/c/<id>` behaviour).
+ */
+const collectionItemRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/c/$collectionId/i/$itemId",
+  component: function CollectionItemRoute() {
+    const { collectionId, itemId } = collectionItemRoute.useParams();
+    return <CollectionView collectionId={collectionId} openItemId={itemId} />;
+  },
+});
+
 const calendarRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/calendar",
@@ -55,6 +68,7 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   pageRoute,
   collectionRoute,
+  collectionItemRoute,
   calendarRoute,
   focusRoute,
 ]);

@@ -4,12 +4,18 @@ The sync upload path never creates workspaces (a writer must already be a member
 brand-new user needs a workspace + owner membership seeded before they can write anything.
 POST /bootstrap does exactly that, idempotently: it creates a personal workspace only if the
 user has no membership yet, then returns every workspace the user belongs to.
+
+"Idempotent" has to hold CONCURRENTLY, not just on sequential replay. The client calls this on
+boot, and React StrictMode double-invokes that effect in dev — two in-flight requests would
+both read "no membership" before either committed and each provision a workspace, leaving the
+user with two identical "My Workspace" entries. A per-user advisory lock serialises the
+check-and-create so the second caller waits and then sees the first one's membership.
 """
 
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import CurrentUser, get_current_user
@@ -25,6 +31,14 @@ async def bootstrap(
     user: CurrentUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> BootstrapResult:
+    # Held until this transaction ends, and scoped to this user by hashing their id, so
+    # concurrent boots by DIFFERENT users never block each other. (A hash collision would only
+    # serialise two unrelated users for the length of this check — harmless.)
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+        {"key": f"bootstrap:{user.id}"},
+    )
+
     has_membership = await session.scalar(
         select(Membership.id).where(Membership.user_id == user.id).limit(1)
     )

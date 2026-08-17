@@ -1,7 +1,9 @@
 /**
- * Left sidebar: active workspace, a nested Pages tree + Collections list, create/delete actions,
- * search/calendar/export, sign-out. Lists are PowerSync reactive queries — they re-render instantly
- * on any local or synced change. Creating/deleting is a local write; PowerSync uploads it.
+ * Left sidebar: workspace switcher, a nested Pages tree + Collections list, create/delete
+ * actions, search/calendar/export, theme toggle, sign-out. Lists are PowerSync reactive
+ * queries — they re-render instantly on any local or synced change. Creating/deleting a page
+ * or collection is a local write; PowerSync uploads it. Creating a WORKSPACE is the exception
+ * and goes through the API (see lib/workspaces.ts).
  */
 import { useQuery } from "@powersync/react";
 import { useNavigate } from "@tanstack/react-router";
@@ -9,18 +11,24 @@ import { useMemo, useState } from "react";
 
 import { signOut } from "../../lib/auth/client";
 import { clearAuthToken } from "../../lib/auth/token";
+import { bootstrapWorkspaces } from "../../lib/bootstrap";
 import { createCollection, deleteCollectionCascade } from "../../lib/collections";
 import { exportWorkspace } from "../../lib/export";
 import { createPage, deletePageCascade } from "../../lib/pages";
-import { db } from "../../lib/powersync/client";
+import { disconnectAndClearDb } from "../../lib/powersync/client";
+import { createWorkspace } from "../../lib/workspaces";
 import { useUiStore } from "../../stores/ui";
+import { NotificationToggle } from "./notification-toggle";
+import { ThemeToggle } from "./theme-toggle";
+import { WorkspaceSettings } from "./workspace-settings";
+import { WorkspaceSwitcher } from "./workspace-switcher";
 
-interface WorkspaceRow {
+interface CollectionRow {
   id: string;
   name: string;
 }
 
-interface CollectionRow {
+interface WorkspaceRow {
   id: string;
   name: string;
 }
@@ -34,13 +42,26 @@ interface PageRow {
 export function Sidebar() {
   const navigate = useNavigate();
   const workspaceId = useUiStore((s) => s.activeWorkspaceId);
+  const setActiveWorkspace = useUiStore((s) => s.setActiveWorkspace);
+  const addKnownWorkspaceId = useUiStore((s) => s.addKnownWorkspaceId);
+  const forgetWorkspaceId = useUiStore((s) => s.forgetWorkspaceId);
+  const setKnownWorkspaceIds = useUiStore((s) => s.setKnownWorkspaceIds);
   const setSearchOpen = useUiStore((s) => s.setSearchOpen);
   const [exporting, setExporting] = useState(false);
+  const [creatingWorkspace, setCreatingWorkspace] = useState(false);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const { data: workspaces } = useQuery<WorkspaceRow>(
-    "SELECT id, name FROM workspaces WHERE id = ?",
-    [workspaceId ?? ""],
+  const { data: workspaceRows } = useQuery<WorkspaceRow>("SELECT id, name FROM workspaces");
+  const knownIds = useUiStore((s) => s.knownWorkspaceIds);
+  // Same filter as the switcher: never count or offer a workspace the server doesn't
+  // acknowledge (see lib/bootstrap.ts).
+  const workspaces = useMemo(
+    () => (knownIds ? workspaceRows.filter((row) => knownIds.includes(row.id)) : workspaceRows),
+    [workspaceRows, knownIds],
   );
+  const activeWorkspace = workspaces.find((workspace) => workspace.id === workspaceId);
+
   const { data: pages } = useQuery<PageRow>(
     "SELECT id, title, parent_id FROM pages WHERE workspace_id = ? ORDER BY position",
     [workspaceId ?? ""],
@@ -49,8 +70,6 @@ export function Sidebar() {
     "SELECT id, name FROM collections WHERE workspace_id = ? ORDER BY created_at",
     [workspaceId ?? ""],
   );
-
-  const workspaceName = workspaces[0]?.name ?? "Workspace";
 
   // Group pages by parent for the tree (null parent = top level).
   const childrenByParent = useMemo(() => {
@@ -89,6 +108,30 @@ export function Sidebar() {
     void navigate({ to: "/" });
   }
 
+  /** Workspace creation needs the server (see lib/workspaces.ts), so it can fail — surface it. */
+  async function handleNewWorkspace(name: string): Promise<void> {
+    if (creatingWorkspace) return;
+    setCreatingWorkspace(true);
+    setWorkspaceError(null);
+    try {
+      const created = await createWorkspace(name);
+      // Record it immediately — the authoritative list is only refreshed on boot.
+      addKnownWorkspaceId(created.id);
+      setActiveWorkspace(created.id);
+      void navigate({ to: "/" });
+    } catch {
+      setWorkspaceError("Couldn't create the workspace. Check your connection and try again.");
+    } finally {
+      setCreatingWorkspace(false);
+    }
+  }
+
+  function handleSwitchWorkspace(id: string): void {
+    if (id === workspaceId) return;
+    setActiveWorkspace(id);
+    void navigate({ to: "/" });
+  }
+
   async function handleExport(): Promise<void> {
     if (!workspaceId || exporting) return;
     setExporting(true);
@@ -101,23 +144,56 @@ export function Sidebar() {
     }
   }
 
+  /**
+   * The active workspace is no longer ours — deleted, left, or never really ours (a stale
+   * replica row). Re-derive from the server rather than picking blindly from the replica,
+   * which is exactly the source that can't be trusted here.
+   */
+  async function handleWorkspaceGone(): Promise<void> {
+    setSettingsOpen(false);
+    if (workspaceId) forgetWorkspaceId(workspaceId);
+    try {
+      const { activeId, knownIds } = await bootstrapWorkspaces();
+      setKnownWorkspaceIds(knownIds);
+      setActiveWorkspace(activeId);
+    } catch {
+      // Offline: fall back to any other workspace this device has.
+      const next = workspaces.find((workspace) => workspace.id !== workspaceId);
+      setActiveWorkspace(next?.id ?? null);
+    }
+    void navigate({ to: "/" });
+  }
+
   async function handleSignOut(): Promise<void> {
     await signOut();
     clearAuthToken();
-    try {
-      await db.disconnect();
-    } catch {
-      // already disconnected — ignore
-    }
+    // Clears the replica, not just the stream — see disconnectAndClearDb for why.
+    await disconnectAndClearDb();
   }
 
   return (
-    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-neutral-200 bg-neutral-50">
-      <div className="px-4 py-4">
-        <span className="block truncate text-sm font-semibold text-neutral-900">
-          {workspaceName}
-        </span>
-      </div>
+    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-line bg-surface">
+      <WorkspaceSwitcher
+        activeWorkspaceId={workspaceId}
+        creating={creatingWorkspace}
+        onSwitch={handleSwitchWorkspace}
+        onCreate={(name) => void handleNewWorkspace(name)}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
+      {settingsOpen && workspaceId ? (
+        <WorkspaceSettings
+          workspaceId={workspaceId}
+          workspaceName={activeWorkspace?.name ?? "Workspace"}
+          isOnlyWorkspace={workspaces.length <= 1}
+          onClose={() => setSettingsOpen(false)}
+          onGone={() => void handleWorkspaceGone()}
+        />
+      ) : null}
+      {workspaceError ? (
+        <p role="alert" className="px-4 pb-2 text-xs text-danger">
+          {workspaceError}
+        </p>
+      ) : null}
 
       <nav className="flex-1 overflow-y-auto px-3 pb-4">
         <div className="mb-3 space-y-0.5">
@@ -129,7 +205,7 @@ export function Sidebar() {
         <SectionHeader label="Pages" newLabel="New page" onNew={() => void handleNewPage(null)} />
         <div className="mb-4">
           {rootPages.length === 0 ? (
-            <p className="px-2 py-1.5 text-sm text-neutral-400">No pages yet</p>
+            <p className="px-2 py-1.5 text-sm text-subtle">No pages yet</p>
           ) : (
             rootPages.map((page) => (
               <PageNode
@@ -152,7 +228,7 @@ export function Sidebar() {
         />
         <div className="mb-4 space-y-0.5">
           {collections.length === 0 ? (
-            <p className="px-2 py-1.5 text-sm text-neutral-400">No collections yet</p>
+            <p className="px-2 py-1.5 text-sm text-subtle">No collections yet</p>
           ) : (
             collections.map((collection) => (
               <RowWithDelete
@@ -169,19 +245,21 @@ export function Sidebar() {
         </div>
       </nav>
 
-      <div className="space-y-0.5 border-t border-neutral-200 px-3 py-3">
+      <div className="space-y-0.5 border-t border-line px-3 py-3">
+        <ThemeToggle />
+        <NotificationToggle />
         <button
           type="button"
           onClick={() => void handleExport()}
           disabled={exporting}
-          className="w-full rounded-md px-2 py-1.5 text-left text-sm text-neutral-500 hover:bg-neutral-200/60 hover:text-neutral-900 disabled:opacity-50"
+          className="w-full rounded-md px-2 py-1.5 text-left text-sm text-muted hover:bg-hover hover:text-fg disabled:opacity-50"
         >
           {exporting ? "Exporting…" : "Export"}
         </button>
         <button
           type="button"
           onClick={() => void handleSignOut()}
-          className="w-full rounded-md px-2 py-1.5 text-left text-sm text-neutral-500 hover:bg-neutral-200/60 hover:text-neutral-900"
+          className="w-full rounded-md px-2 py-1.5 text-left text-sm text-muted hover:bg-hover hover:text-fg"
         >
           Sign out
         </button>
@@ -207,7 +285,7 @@ function PageNode({ page, childrenByParent, depth, onOpen, onAddSub, onDelete }:
   return (
     <div>
       <div
-        className="group flex items-center gap-1 rounded-md pr-1 hover:bg-neutral-200/60"
+        className="group flex items-center gap-1 rounded-md pr-1 hover:bg-hover"
         style={{ paddingLeft: depth * 12 }}
       >
         {hasChildren ? (
@@ -215,7 +293,7 @@ function PageNode({ page, childrenByParent, depth, onOpen, onAddSub, onDelete }:
             type="button"
             onClick={() => setExpanded((e) => !e)}
             aria-label={expanded ? "Collapse" : "Expand"}
-            className="w-4 shrink-0 text-xs text-neutral-400"
+            className="w-4 shrink-0 text-xs text-subtle"
           >
             {expanded ? "▾" : "▸"}
           </button>
@@ -225,7 +303,7 @@ function PageNode({ page, childrenByParent, depth, onOpen, onAddSub, onDelete }:
         <button
           type="button"
           onClick={() => onOpen(page.id)}
-          className="flex-1 truncate py-1.5 text-left text-sm text-neutral-700"
+          className="flex-1 truncate py-1.5 text-left text-sm text-muted"
         >
           {page.title || "Untitled"}
         </button>
@@ -234,7 +312,7 @@ function PageNode({ page, childrenByParent, depth, onOpen, onAddSub, onDelete }:
           onClick={() => onAddSub(page.id)}
           aria-label="Add subpage"
           title="Add subpage"
-          className="invisible shrink-0 rounded px-1 text-neutral-400 hover:text-neutral-800 group-hover:visible"
+          className="invisible shrink-0 rounded px-1 text-subtle hover:text-fg group-hover:visible"
         >
           +
         </button>
@@ -243,7 +321,7 @@ function PageNode({ page, childrenByParent, depth, onOpen, onAddSub, onDelete }:
           onClick={() => onDelete(page.id, page.title)}
           aria-label="Delete page"
           title="Delete page"
-          className="invisible shrink-0 rounded px-1 text-neutral-400 hover:text-red-500 group-hover:visible"
+          className="invisible shrink-0 rounded px-1 text-subtle hover:text-danger group-hover:visible"
         >
           ×
         </button>
@@ -276,13 +354,13 @@ function SectionHeader({
 }) {
   return (
     <div className="flex items-center justify-between px-2 py-1">
-      <span className="text-xs font-medium uppercase tracking-wide text-neutral-400">{label}</span>
+      <span className="text-xs font-medium uppercase tracking-wide text-subtle">{label}</span>
       <button
         type="button"
         onClick={onNew}
         aria-label={newLabel}
         title={newLabel}
-        className="rounded px-1 text-base leading-none text-neutral-400 hover:bg-neutral-200/60 hover:text-neutral-700"
+        className="rounded px-1 text-base leading-none text-subtle hover:bg-hover hover:text-fg"
       >
         +
       </button>
@@ -302,11 +380,11 @@ function RowWithDelete({
   onDelete: () => void;
 }) {
   return (
-    <div className="group flex items-center rounded-md pr-1 hover:bg-neutral-200/60">
+    <div className="group flex items-center rounded-md pr-1 hover:bg-hover">
       <button
         type="button"
         onClick={onOpen}
-        className="flex-1 truncate px-2 py-1.5 text-left text-sm text-neutral-700"
+        className="flex-1 truncate px-2 py-1.5 text-left text-sm text-muted"
       >
         {label}
       </button>
@@ -315,7 +393,7 @@ function RowWithDelete({
         onClick={onDelete}
         aria-label={deleteLabel}
         title={deleteLabel}
-        className="invisible shrink-0 rounded px-1 text-neutral-400 hover:text-red-500 group-hover:visible"
+        className="invisible shrink-0 rounded px-1 text-subtle hover:text-danger group-hover:visible"
       >
         ×
       </button>
@@ -336,10 +414,10 @@ function SidebarButton({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm text-neutral-600 hover:bg-neutral-200/60 hover:text-neutral-900"
+      className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm text-muted hover:bg-hover hover:text-fg"
     >
       <span>{label}</span>
-      {hint ? <span className="text-xs text-neutral-400">{hint}</span> : null}
+      {hint ? <span className="text-xs text-subtle">{hint}</span> : null}
     </button>
   );
 }

@@ -95,6 +95,8 @@ function blockToMarkdown(block: BlockRow): string {
 function buildMarkdown(pages: PageRow[], blocks: BlockRow[]): string {
   const blocksByPage = new Map<string, BlockRow[]>();
   for (const block of blocks) {
+    // Item descriptions are blocks too (page_id null) — they belong to their item, not here.
+    if (!block.page_id) continue;
     const list = blocksByPage.get(block.page_id) ?? [];
     list.push(block);
     blocksByPage.set(block.page_id, list);

@@ -10,7 +10,17 @@ Invariants (CLAUDE.md):
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -49,6 +59,35 @@ class Membership(TimestampMixin, Base):
     # roles: owner | editor | viewer (commenter later)
 
 
+class WorkspaceInvitation(TimestampMixin, Base):
+    """A pending invitation to join a workspace.
+
+    Deliberately NOT a synced table: it holds other people's email addresses and a bearer
+    token, neither of which belongs on every member's device. It is therefore absent from
+    sync-rules.yaml and the client schema — the settings panel reads it over the API.
+    """
+
+    __tablename__ = "workspace_invitations"
+    __table_args__ = (
+        Index("ix_workspace_invitations_workspace", "workspace_id"),
+        Index("ix_workspace_invitations_email", "email"),
+        # One live invite per (workspace, email); re-inviting updates the existing row.
+        UniqueConstraint("workspace_id", "email", name="uq_workspace_invitation_email"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    # Stored lowercased; matched against the accepting user's email.
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False, default="editor")
+    # Unguessable bearer token from the invite link. Unique so a lookup can't be ambiguous.
+    token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    invited_by: Mapped[str] = mapped_column(String(64), nullable=False)  # better-auth user id
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class Page(TimestampMixin, Base):
     __tablename__ = "pages"
     __table_args__ = (Index("ix_pages_workspace", "workspace_id"),)
@@ -63,15 +102,34 @@ class Page(TimestampMixin, Base):
 
 
 class Block(TimestampMixin, Base):
+    """A block belongs to exactly ONE owner: a page, or an item's description.
+
+    Item descriptions reuse blocks rather than getting their own table so the editor, the
+    serializer, search and export all keep working unchanged — a card's body is the same
+    primitive as a page's body, which is the product's "same data, many views" idea applied
+    one level down. The XOR is enforced in the database, not just in code, because both
+    columns arrive from a client.
+    """
+
     __tablename__ = "blocks"
-    __table_args__ = (Index("ix_blocks_page", "page_id"),)
+    __table_args__ = (
+        Index("ix_blocks_page", "page_id"),
+        Index("ix_blocks_item", "item_id"),
+        CheckConstraint(
+            "(page_id IS NOT NULL) <> (item_id IS NOT NULL)",
+            name="ck_blocks_exactly_one_owner",
+        ),
+    )
 
     # Block ids are BlockNote-owned strings, NOT UUIDs — the one synced PK that is
     # not a UUID column. Everything else keys off client-generated UUIDs.
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    page_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("pages.id", ondelete="CASCADE"), nullable=False
+    page_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("pages.id", ondelete="CASCADE"), nullable=True
+    )
+    item_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("items.id", ondelete="CASCADE"), nullable=True
     )
     type: Mapped[str] = mapped_column(String(32), nullable=False)  # curated set only
     content: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)

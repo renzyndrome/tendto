@@ -13,6 +13,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import { AuthScreen } from "./components/auth/auth-screen";
+import { AcceptInvite } from "./components/invite/accept-invite";
 import { FullScreenLoader } from "./components/ui/spinner";
 import { useSession } from "./lib/auth/client";
 import { bootstrapWorkspaces } from "./lib/bootstrap";
@@ -20,8 +21,19 @@ import { connectDb } from "./lib/powersync/client";
 import { router } from "./routes/router";
 import { useUiStore } from "./stores/ui";
 
+/** `/invite/<token>` — read here rather than from the router, see below. */
+function inviteToken(): string | null {
+  const match = window.location.pathname.match(/^\/invite\/([^/]+)\/?$/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 export function App() {
   const { data: session, isPending } = useSession();
+  // Checked BEFORE the auth/bootstrap gate: an invitee typically has no session and no
+  // workspace yet, so the invite screen must render outside the app shell (whose router only
+  // mounts once bootstrap has produced an active workspace).
+  const token = inviteToken();
+  if (token) return <AcceptInvite token={token} />;
 
   if (isPending) return <FullScreenLoader label="Loading…" />;
   if (!session) return <AuthScreen />;
@@ -32,6 +44,7 @@ type BootStatus = "booting" | "ready" | "error";
 
 function AuthedApp() {
   const setActiveWorkspace = useUiStore((s) => s.setActiveWorkspace);
+  const setKnownWorkspaceIds = useUiStore((s) => s.setKnownWorkspaceIds);
   const [status, setStatus] = useState<BootStatus>("booting");
 
   useEffect(() => {
@@ -43,9 +56,12 @@ function AuthedApp() {
         // PowerSync retries internally and the UI still reads local data.
         void connectDb().catch(() => undefined);
 
-        const workspaceId = await bootstrapWorkspaces();
+        const { activeId, knownIds } = await bootstrapWorkspaces();
         if (cancelled) return;
-        if (workspaceId) setActiveWorkspace(workspaceId);
+        // Set the authoritative list BEFORE the active id, so nothing renders a workspace
+        // that only exists in this device's replica (see bootstrap.ts).
+        setKnownWorkspaceIds(knownIds);
+        if (activeId) setActiveWorkspace(activeId);
         setStatus("ready");
       } catch {
         if (!cancelled) setStatus("error");
@@ -56,17 +72,17 @@ function AuthedApp() {
     return () => {
       cancelled = true;
     };
-  }, [setActiveWorkspace]);
+  }, [setActiveWorkspace, setKnownWorkspaceIds]);
 
   if (status === "error") {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-white">
+      <div className="flex h-screen w-screen items-center justify-center bg-app">
         <div className="text-center">
-          <p className="text-sm text-neutral-600">Couldn&apos;t set up your workspace.</p>
+          <p className="text-sm text-muted">Couldn&apos;t set up your workspace.</p>
           <button
             type="button"
             onClick={() => window.location.reload()}
-            className="mt-3 rounded-md bg-neutral-900 px-3 py-1.5 text-sm text-white hover:bg-neutral-800"
+            className="mt-3 rounded-md bg-accent px-3 py-1.5 text-sm text-on-accent hover:opacity-90"
           >
             Retry
           </button>

@@ -19,7 +19,12 @@ echo "▶ migrations: app (alembic) + auth (better-auth)"
 # PowerSync logical-replication publication (ignore if it already exists)
 docker compose exec -T db psql -U tendto -d tendto -c \
   "CREATE PUBLICATION powersync FOR ALL TABLES;" >/dev/null 2>&1 || true
-( cd apps/auth && bun --env-file=../../.env x @better-auth/cli@latest migrate --yes >/dev/null )
+# NOTE: the better-auth CLI hangs forever when stderr is a TTY (its progress spinner
+# deadlocks and floods the terminal with ANSI redraws). Both streams MUST go to a file —
+# redirecting stdout alone is not enough. Keep the log so failures stay diagnosable.
+( cd apps/auth && bun --env-file=../../.env x @better-auth/cli@latest migrate --yes \
+    >"$LOGDIR/auth-migrate.log" 2>&1 ) \
+  || { echo "  ✖ better-auth migrate failed — see $LOGDIR/auth-migrate.log"; exit 1; }
 
 start_if_down() { # name  url  cmd...
   local name="$1" url="$2"; shift 2

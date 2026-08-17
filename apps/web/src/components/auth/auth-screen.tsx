@@ -52,15 +52,15 @@ export function AuthScreen() {
   }
 
   const inputClass =
-    "w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 " +
-    "placeholder:text-neutral-400 outline-none focus:border-neutral-900";
+    "w-full rounded-md border border-line bg-app px-3 py-2 text-sm text-fg " +
+    "placeholder:text-subtle outline-none focus:border-fg";
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-neutral-50 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-surface px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">TendTo</h1>
-          <p className="mt-1 text-sm text-neutral-500">
+          <h1 className="text-2xl font-semibold tracking-tight text-fg">TendTo</h1>
+          <p className="mt-1 text-sm text-muted">
             {isSignUp ? "Create your account" : "Welcome back"}
           </p>
         </div>
@@ -85,11 +85,11 @@ export function AuthScreen() {
             onChange={(e) => setPassword(e.target.value)}
             className={inputClass}
           />
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          {error ? <p className="text-sm text-danger">{error}</p> : null}
           <button
             type="submit"
             disabled={submitting}
-            className="w-full rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50"
+            className="w-full rounded-md bg-accent px-3 py-2 text-sm font-medium text-on-accent transition hover:opacity-90 disabled:opacity-50"
           >
             {submitting ? "Please wait…" : isSignUp ? "Create account" : "Sign in"}
           </button>
@@ -101,7 +101,7 @@ export function AuthScreen() {
             setMode(isSignUp ? "sign-in" : "sign-up");
             setError(null);
           }}
-          className="mt-4 w-full text-center text-sm text-neutral-500 hover:text-neutral-900"
+          className="mt-4 w-full text-center text-sm text-muted hover:text-fg"
         >
           {isSignUp ? "Already have an account? Sign in" : "New here? Create an account"}
         </button>

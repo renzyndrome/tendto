@@ -36,17 +36,20 @@ const pages = new Table(
   { indexes: { by_workspace: ["workspace_id"] } },
 );
 
+// A block belongs to exactly one owner: a page, or an item's description (see the API model
+// and migration 0004 — the XOR is enforced in Postgres).
 const blocks = new Table(
   {
     workspace_id: column.text,
-    page_id: column.text,
+    page_id: column.text, // null for item descriptions
+    item_id: column.text, // null for page bodies
     type: column.text,
     content: column.text, // JSON string
     position: column.integer,
     created_at: column.text,
     updated_at: column.text,
   },
-  { indexes: { by_page: ["page_id"] } },
+  { indexes: { by_page: ["page_id"], by_item: ["item_id"] } },
 );
 
 const collections = new Table(

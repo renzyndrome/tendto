@@ -16,7 +16,29 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
     },
   });
   if (!res.ok) {
-    throw new Error(`API ${init.method ?? "GET"} ${path} failed: ${res.status}`);
+    throw new ApiError(res.status, await readDetail(res, init.method ?? "GET", path));
   }
   return res;
+}
+
+/** Carries the server's message so UI can show *why* something failed, not just that it did. */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+/** FastAPI puts the human-readable reason in `detail`; fall back to a generic line. */
+async function readDetail(res: Response, method: string, path: string): Promise<string> {
+  try {
+    const body = (await res.json()) as { detail?: unknown };
+    if (typeof body.detail === "string" && body.detail.length > 0) return body.detail;
+  } catch {
+    // Not JSON (proxy error page, empty body) — fall through.
+  }
+  return `API ${method} ${path} failed: ${res.status}`;
 }
