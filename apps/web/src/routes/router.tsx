@@ -2,6 +2,7 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 
 import { CalendarView } from "../components/calendar/calendar-view";
+import { DayView } from "../components/calendar/day-view";
 import { CollectionView } from "../components/collection/collection-view";
 import { PageEditor } from "../components/editor/page-editor";
 import { FocusView } from "../components/focus/focus-view";
@@ -58,6 +59,19 @@ const calendarRoute = createRoute({
   component: CalendarView,
 });
 
+/**
+ * The day view is a ROUTE keyed by a local `YYYY-MM-DD`, for the same reasons the card dialog is
+ * one: a day is linkable, Back returns to the month, and a reload keeps you on the day.
+ */
+const calendarDayRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/calendar/$date",
+  component: function CalendarDayRoute() {
+    const { date } = calendarDayRoute.useParams();
+    return <DayView dateKey={date} />;
+  },
+});
+
 const focusRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/focus",
@@ -70,6 +84,7 @@ const routeTree = rootRoute.addChildren([
   collectionRoute,
   collectionItemRoute,
   calendarRoute,
+  calendarDayRoute,
   focusRoute,
 ]);
 

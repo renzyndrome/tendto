@@ -130,6 +130,14 @@ daily recap each evening.
 > ambient job is scaffolded, delivery + scheduler deferred). Still open in Phase 3: **pgvector
 > semantic** search/Q&A, the **backup/restore drill**, and sync-hardening edge cases — all need
 > live services (and an LLM key) to build meaningfully.
+>
+> **Status (2026-08-17):** the calendar gained a **day view** (`/calendar/$date`) — a Google-style
+> time grid you reach by clicking a day, where a task can be plotted on a slot and dragged to
+> another time. One thing there is worth carrying forward: an item is a **deadline, not a
+> meeting**. It has a due moment and no duration, so a block is one slot tall as an anchor, and
+> the all-day row is simply the existing "date with no time". Giving items a duration would turn
+> this from a task list into a scheduler — a Phase-4-at-earliest decision that has to be argued
+> on its own, not slipped in as calendar polish.
 
 ## Phase 4 — Native shells & earned nice-to-haves
 

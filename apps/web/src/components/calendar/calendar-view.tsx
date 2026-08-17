@@ -1,9 +1,10 @@
 /**
  * Unified calendar — a month grid over date-bearing items across ALL collections in the active
  * workspace. Items stream from the local replica via a reactive query (instant, offline); a chip
- * links back to its collection. The `due` filter uses SQLite's json_extract (bundled in
- * PowerSync's SQLite); the JS bucketing also ignores items without a `due`, so it is robust
- * either way.
+ * opens that item's card. The `due` filter uses SQLite's json_extract (bundled in PowerSync's
+ * SQLite); the JS bucketing also ignores items without a `due`, so it is robust either way.
+ *
+ * Clicking a day opens the day view (`/calendar/$date`), where tasks are plotted on a time grid.
  */
 import { useQuery } from "@powersync/react";
 import { useNavigate } from "@tanstack/react-router";
@@ -23,6 +24,8 @@ interface CalendarItem {
   id: string;
   collectionId: string;
   title: string;
+  /** The raw `due` value, kept only to order a day's chips. */
+  due: string;
 }
 
 export function CalendarView() {
@@ -41,16 +44,22 @@ export function CalendarView() {
     const map = new Map<string, CalendarItem[]>();
     for (const row of items) {
       const props = parseProperties(row);
-      const due = typeof props.due === "string" ? props.due.slice(0, 10) : "";
-      if (!due) continue;
-      const list = map.get(due) ?? [];
+      const due = typeof props.due === "string" ? props.due : "";
+      const key = due.slice(0, 10);
+      if (!key) continue;
+      const list = map.get(key) ?? [];
       list.push({
         id: row.id,
         collectionId: row.collection_id,
         title: props.title || "Untitled",
+        due,
       });
-      map.set(due, list);
+      map.set(key, list);
     }
+    // Earliest first, so the three chips a cell has room for are the day's first three. The due
+    // format sorts lexicographically (all-day "…-17" before "…-17T09:00"), which is the order
+    // the day view uses too.
+    for (const list of map.values()) list.sort((a, b) => a.due.localeCompare(b.due));
     return map;
   }, [items]);
 
@@ -58,8 +67,15 @@ export function CalendarView() {
   const todayKey = toDateKey(new Date());
   const activeMonth = viewDate.getMonth();
 
-  function openCollection(collectionId: string): void {
-    void navigate({ to: "/c/$collectionId", params: { collectionId } });
+  function openItem(item: CalendarItem): void {
+    void navigate({
+      to: "/c/$collectionId/i/$itemId",
+      params: { collectionId: item.collectionId, itemId: item.id },
+    });
+  }
+
+  function openDay(key: string): void {
+    void navigate({ to: "/calendar/$date", params: { date: key } });
   }
 
   return (
@@ -112,33 +128,40 @@ export function CalendarView() {
             <div
               key={key}
               data-testid={`cal-day-${key}`}
+              onClick={() => openDay(key)}
               className={
-                "min-h-[92px] border-b border-r border-line p-1 " +
+                "min-h-[92px] cursor-pointer border-b border-r border-line p-1 hover:bg-hover/40 " +
                 (inMonth ? "bg-app" : "bg-surface/40")
               }
             >
               <div className="mb-1 flex justify-end">
-                <span
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openDay(key);
+                  }}
+                  aria-label={`Open ${key}`}
                   className={
-                    "inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1 text-xs " +
+                    "inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1 text-xs hover:bg-hover " +
                     (isToday
-                      ? "bg-accent font-medium text-on-accent"
+                      ? "bg-accent font-medium text-on-accent hover:bg-accent"
                       : inMonth
                         ? "text-muted"
                         : "text-subtle")
                   }
                 >
                   {day.getDate()}
-                </span>
+                </button>
               </div>
               <div className="space-y-0.5">
                 {dayItems.slice(0, 3).map((item) => (
-                  <CalendarChip key={item.id} item={item} onOpen={openCollection} />
+                  <CalendarChip key={item.id} item={item} onOpen={openItem} />
                 ))}
                 {dayItems.length > 3 ? (
-                  <div className="px-1 text-[11px] text-subtle">
+                  <span className="block px-1 text-[11px] text-subtle underline-offset-2 hover:underline">
                     +{dayItems.length - 3} more
-                  </div>
+                  </span>
                 ) : null}
               </div>
             </div>
@@ -154,12 +177,15 @@ function CalendarChip({
   onOpen,
 }: {
   item: CalendarItem;
-  onOpen: (collectionId: string) => void;
+  onOpen: (item: CalendarItem) => void;
 }) {
   return (
     <button
       type="button"
-      onClick={() => onOpen(item.collectionId)}
+      onClick={(event) => {
+        event.stopPropagation(); // the cell behind opens the day view
+        onOpen(item);
+      }}
       title={item.title}
       className="flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] text-muted hover:bg-hover"
     >

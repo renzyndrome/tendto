@@ -17,6 +17,8 @@ dist/
 apps/web/playwright-report/
 apps/web/e2e/.artifacts/
 apps/web/test-results/
+# playwright drops .last-run.json relative to the cwd it was invoked from
+test-results/
 
 # node
 node_modules/

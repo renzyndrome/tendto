@@ -81,7 +81,8 @@ cd apps/web && npx playwright test # end-to-end (boot the stack first: make e2e-
 - **Collections** — one `items` primitive as checklist / list / table / kanban, plus a card
   detail dialog with a rich description, assignee and due date + optional time.
 - **Shared workspaces** — multiple workspaces, members and roles, invitations by email.
-- **Organize + intelligence** — unified calendar, instant search, export, the daily AI summary.
+- **Organize + intelligence** — unified calendar (month grid + a day view you can plot tasks on),
+  instant search, export, the daily AI summary.
 - Plus light/dark theming and opt-in due/Pomodoro reminders.
 
 Still open: presence, comments/@mentions, RLS hardening, pgvector semantic search, Stripe, and
