@@ -32,15 +32,21 @@ from app.tests.support import (
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def _create_database() -> None:
     await ensure_test_database()
+    async with engine.begin() as conn:
+        # Rebuild from the models once per run. `create_all` alone only creates MISSING tables,
+        # so a column added to an existing model would leave the test database on the old shape
+        # and fail with "column ... does not exist". Dropping first keeps the test schema
+        # honest without needing migrations here; the database is disposable by construction.
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
+        # better-auth's table isn't in Base.metadata — see AUTH_USER_DDL.
+        await conn.execute(text(AUTH_USER_DDL))
     yield
 
 
 @pytest_asyncio.fixture(autouse=True)
 async def _prepare_db(_create_database: None) -> None:
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        # better-auth's table isn't in Base.metadata — see AUTH_USER_DDL.
-        await conn.execute(text(AUTH_USER_DDL))
         for table in reversed(Base.metadata.sorted_tables):
             await conn.execute(delete(table))
     yield

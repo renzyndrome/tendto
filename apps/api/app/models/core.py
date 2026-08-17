@@ -11,6 +11,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -101,15 +102,34 @@ class Page(TimestampMixin, Base):
 
 
 class Block(TimestampMixin, Base):
+    """A block belongs to exactly ONE owner: a page, or an item's description.
+
+    Item descriptions reuse blocks rather than getting their own table so the editor, the
+    serializer, search and export all keep working unchanged — a card's body is the same
+    primitive as a page's body, which is the product's "same data, many views" idea applied
+    one level down. The XOR is enforced in the database, not just in code, because both
+    columns arrive from a client.
+    """
+
     __tablename__ = "blocks"
-    __table_args__ = (Index("ix_blocks_page", "page_id"),)
+    __table_args__ = (
+        Index("ix_blocks_page", "page_id"),
+        Index("ix_blocks_item", "item_id"),
+        CheckConstraint(
+            "(page_id IS NOT NULL) <> (item_id IS NOT NULL)",
+            name="ck_blocks_exactly_one_owner",
+        ),
+    )
 
     # Block ids are BlockNote-owned strings, NOT UUIDs — the one synced PK that is
     # not a UUID column. Everything else keys off client-generated UUIDs.
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    page_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("pages.id", ondelete="CASCADE"), nullable=False
+    page_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("pages.id", ondelete="CASCADE"), nullable=True
+    )
+    item_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("items.id", ondelete="CASCADE"), nullable=True
     )
     type: Mapped[str] = mapped_column(String(32), nullable=False)  # curated set only
     content: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
