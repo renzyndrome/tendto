@@ -76,17 +76,21 @@ async function openApp(page: Page): Promise<void> {
 async function addCardDueNow(page: Page, title: string): Promise<void> {
   await page.getByRole("button", { name: "New collection" }).click();
   await page.getByRole("button", { name: "+ New item" }).click();
-  const titleBox = page.getByTestId("board-card").first().getByRole("textbox").first();
+  const titleBox = page.getByTestId("detail-title");
   await titleBox.fill(title);
   await titleBox.press("Enter");
-  await page.getByRole("button", { name: "Edit card details" }).first().click();
+  await page.getByTestId("item-detail").waitFor();
 
   const now = new Date(Date.now() - 60_000);
   const pad = (n: number) => String(n).padStart(2, "0");
   await page
-    .getByTestId("card-due-date")
+    .getByTestId("detail-due-date")
     .fill(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`);
-  await page.getByTestId("card-due-time").fill(`${pad(now.getHours())}:${pad(now.getMinutes())}`);
+  await page.getByTestId("detail-due-time").fill(`${pad(now.getHours())}:${pad(now.getMinutes())}`);
+  // Close the detail: it is a full-screen overlay, so leaving it open blocks the board and the
+  // sidebar for whatever the test does next.
+  await page.getByRole("button", { name: "Close card" }).click();
+  await expect(page.getByTestId("board-card").first()).toContainText(title);
 }
 
 /** Nudge the watcher the way returning to the tab does, then count matching notifications. */
