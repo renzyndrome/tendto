@@ -23,12 +23,19 @@ interface FocusState {
   completed: number; // completed work sessions
   workMin: number;
   breakMin: number;
+  /**
+   * Whether a finished phase rolls straight into the next one. OFF by default: a timer that
+   * restarts itself has decided for you that you're ready, and a break you didn't notice
+   * starting is a break you didn't take.
+   */
+  autoContinue: boolean;
   tasks: FocusTask[];
 
   start: () => void;
   pause: () => void;
   reset: () => void;
   completePhase: () => void;
+  setAutoContinue: (on: boolean) => void;
   setDurations: (workMin: number, breakMin: number) => void;
   addTask: (text: string) => void;
   toggleTask: (id: string) => void;
@@ -49,6 +56,7 @@ export const useFocusStore = create<FocusState>()(
       completed: 0,
       workMin: DEFAULT_WORK,
       breakMin: DEFAULT_BREAK,
+      autoContinue: false,
       tasks: [],
 
       start: () =>
@@ -72,25 +80,34 @@ export const useFocusStore = create<FocusState>()(
           pausedRemaining: s.workMin * 60,
         })),
 
+      /**
+       * A phase ran out: move to the next one, but only START it when auto-continue is on.
+       * Otherwise the next phase sits armed at its full duration, waiting for Start.
+       */
       completePhase: () =>
         set((s) => {
           const nextPhase: FocusPhase = s.phase === "work" ? "break" : "work";
+          const seconds = phaseSeconds(s, nextPhase);
           return {
             phase: nextPhase,
             completed: s.phase === "work" ? s.completed + 1 : s.completed,
-            running: true,
-            endsAt: Date.now() + phaseSeconds(s, nextPhase) * 1000,
-            pausedRemaining: 0,
+            running: s.autoContinue,
+            endsAt: s.autoContinue ? Date.now() + seconds * 1000 : null,
+            pausedRemaining: s.autoContinue ? 0 : seconds,
           };
         }),
+
+      setAutoContinue: (on) => set({ autoContinue: on }),
 
       setDurations: (workMin, breakMin) =>
         set((s) => {
           const w = clampMinutes(workMin);
           const b = clampMinutes(breakMin);
-          // If idle on a fresh phase, reflect the new duration immediately.
-          const pausedRemaining =
-            !s.running && s.phase === "work" ? w * 60 : s.pausedRemaining;
+          // If the phase is idle at its full duration there is nothing to resume, so reflect the
+          // new number now rather than at the next phase — including a break waiting to be started.
+          const pausedRemaining = isFresh(s)
+            ? phaseSeconds({ workMin: w, breakMin: b }, s.phase)
+            : s.pausedRemaining;
           return { workMin: w, breakMin: b, pausedRemaining };
         }),
 
@@ -117,6 +134,14 @@ export const useFocusStore = create<FocusState>()(
 
 function phaseSeconds(s: Pick<FocusState, "workMin" | "breakMin">, phase: FocusPhase): number {
   return (phase === "work" ? s.workMin : s.breakMin) * 60;
+}
+
+/**
+ * True when the phase is idle at its full duration — i.e. it would be Started, not Resumed.
+ * Takes the durations separately so `setDurations` can ask about a phase it's about to change.
+ */
+export function isFresh(s: Pick<FocusState, "running" | "pausedRemaining" | "phase" | "workMin" | "breakMin">): boolean {
+  return !s.running && s.pausedRemaining >= phaseSeconds(s, s.phase);
 }
 
 /** Seconds left right now (derived from `endsAt` while running, else the paused value). */

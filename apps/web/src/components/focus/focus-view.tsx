@@ -2,10 +2,10 @@
  * Focus mode — a Pomodoro timer plus an in-session task list. Opt-in surface (you navigate here),
  * so it stays out of the way until you want it. State lives in the local focus store (persisted).
  */
-import { useEffect, useReducer, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 
 import { notify } from "../../lib/notifications";
-import { remainingSeconds, useFocusStore } from "../../stores/focus";
+import { isFresh, remainingSeconds, useFocusStore } from "../../stores/focus";
 
 function mmss(total: number): string {
   const m = Math.floor(total / 60);
@@ -29,15 +29,24 @@ export function FocusView() {
 
   // Advance to the next phase when the countdown reaches zero, and say so — the whole point of
   // a Pomodoro is that you're looking elsewhere when it ends. Its own tag keeps it separate
-  // from due reminders (see lib/notifications.ts).
+  // from due reminders (see lib/notifications.ts). Unless auto-continue is on, the next phase is
+  // only armed, so the notification has to say whether anything is already running.
+  //
+  // Keyed on the `endsAt` being consumed, because StrictMode runs an effect's setup twice in the
+  // SAME commit — same closure both times, so a plain guard on `running` is still true on the
+  // second pass and the timer skips a whole phase (work → break → work in one tick).
+  const handled = useRef<number | null>(null);
   useEffect(() => {
-    if (!store.running || remaining > 0) return;
+    if (!store.running || remaining > 0 || store.endsAt === null) return;
+    if (handled.current === store.endsAt) return;
+    handled.current = store.endsAt;
     const finished = store.phase;
+    const nextMinutes = finished === "work" ? store.breakMin : store.workMin;
+    const next = finished === "work" ? `${nextMinutes} minute break` : `${nextMinutes} minutes of focus`;
     notify(finished === "work" ? "Focus session complete" : "Break over", {
-      body:
-        finished === "work"
-          ? `Time for a ${store.breakMin} minute break.`
-          : `Back to it — ${store.workMin} minutes of focus.`,
+      body: store.autoContinue
+        ? `Starting your ${next}.`
+        : `Start your ${next} when you're ready.`,
       tag: "tendto-pomodoro",
     });
     store.completePhase();
@@ -75,9 +84,16 @@ export function FocusView() {
           <button
             type="button"
             onClick={() => store.start()}
+            data-testid="focus-start"
             className="rounded-md bg-accent px-5 py-1.5 text-sm font-medium text-on-accent hover:opacity-90"
           >
-            Start
+            {/* Naming the phase is the whole point of stopping between them: you should have to
+                agree to the break, not discover it already half over. */}
+            {isFresh(store)
+              ? store.phase === "work"
+                ? "Start focus"
+                : "Start break"
+              : "Resume"}
           </button>
         )}
         <button
@@ -116,6 +132,17 @@ export function FocusView() {
             className="w-12 rounded border border-line px-1 py-0.5 text-center"
           />
           min
+        </label>
+        <label className="flex items-center gap-1.5" title="Roll straight into the next phase">
+          <input
+            type="checkbox"
+            checked={store.autoContinue}
+            onChange={(e) => store.setAutoContinue(e.target.checked)}
+            aria-label="Auto-continue"
+            data-testid="focus-auto"
+            className="h-3.5 w-3.5 rounded border-line"
+          />
+          Auto
         </label>
       </div>
 

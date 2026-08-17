@@ -220,7 +220,11 @@ test.describe("notifications", () => {
       })
       .toBeGreaterThan(0);
 
-    const pomodoro = (await shown(page)).find((n) => n.tag === "tendto-pomodoro");
+    const pomodoros = (await shown(page)).filter((n) => n.tag === "tendto-pomodoro");
+    // Exactly one per boundary: StrictMode runs the effect's setup twice in a single commit, and
+    // an unguarded handler both notifies twice and skips a whole phase.
+    expect(pomodoros).toHaveLength(1);
+    const pomodoro = pomodoros[0];
     expect(pomodoro?.title).toContain("Focus session complete");
     // A tag of its own, so a due reminder can't replace it in the OS (and vice versa).
     expect(pomodoro?.tag).not.toContain("tendto-due");
