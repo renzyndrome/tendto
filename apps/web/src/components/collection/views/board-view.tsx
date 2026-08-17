@@ -8,27 +8,26 @@ import { useMemo, useState } from "react";
 import { deleteColumn, newColumn, setColumns } from "../../../lib/collections";
 import {
   columnColor,
-  createItem,
   deleteItem,
   moveItemToStatus,
   parseProperties,
-  patchItem,
   type Column,
   type ItemRow,
 } from "../../../lib/items/mutations";
 import { formatDueLabel } from "../../../lib/items/due";
-import { AssigneePicker } from "./assignee-picker";
-import { DuePicker } from "./due-picker";
 import { InlineText } from "./inline-text";
 
 interface BoardViewProps {
   items: ItemRow[];
-  workspaceId: string | null;
   collectionId: string;
   columns: Column[];
+  /** Open a card's detail dialog (a route change — see CollectionView). */
+  onOpen: (itemId: string) => void;
+  /** Create a card in this column and open it, so quick capture stays one flow. */
+  onAdd: (status: string) => void;
 }
 
-export function BoardView({ items, workspaceId, collectionId, columns }: BoardViewProps) {
+export function BoardView({ items, collectionId, columns, onOpen, onAdd }: BoardViewProps) {
   const byStatus = useMemo(() => {
     const map = new Map<string, ItemRow[]>();
     for (const column of columns) map.set(column.id, []);
@@ -123,7 +122,7 @@ export function BoardView({ items, workspaceId, collectionId, columns }: BoardVi
               <BoardCard
                 key={row.id}
                 row={row}
-                workspaceId={workspaceId}
+                onOpen={() => onOpen(row.id)}
                 onDragStart={() => setDragId(row.id)}
               />
             ))}
@@ -131,9 +130,7 @@ export function BoardView({ items, workspaceId, collectionId, columns }: BoardVi
 
           <button
             type="button"
-            onClick={() => {
-              if (workspaceId) void createItem(workspaceId, collectionId, { status: column.id });
-            }}
+            onClick={() => onAdd(column.id)}
             className="mt-2 rounded-md px-2 py-1.5 text-left text-sm text-muted hover:bg-hover"
           >
             + Add card
@@ -153,93 +150,65 @@ export function BoardView({ items, workspaceId, collectionId, columns }: BoardVi
   );
 }
 
+/**
+ * A card is a summary, not a form. Clicking it opens the detail dialog (Trello-style), which is
+ * where every field is edited — a 18rem card is the wrong place for a description, a status
+ * select and two date inputs. Chips show what you'd want at a glance without opening it.
+ */
 function BoardCard({
   row,
-  workspaceId,
+  onOpen,
   onDragStart,
 }: {
   row: ItemRow;
-  workspaceId: string | null;
+  onOpen: () => void;
   onDragStart: () => void;
 }) {
   const props = parseProperties(row);
-  const [open, setOpen] = useState(false);
   return (
     <div
       draggable
       onDragStart={onDragStart}
       data-testid="board-card"
-      className="group cursor-grab rounded-md border border-line bg-elevated p-2 shadow-sm"
+      className="group relative rounded-md border border-line bg-elevated shadow-sm"
     >
-      <div className="flex items-start justify-between gap-1">
-        <InlineText
-          value={props.title}
-          onCommit={(title) => void patchItem(row, { title })}
-          placeholder="Untitled"
-          multiline
-          ariaLabel="Card title"
-          className="min-w-0 flex-1 bg-transparent text-sm leading-snug text-fg outline-none placeholder:text-subtle"
-        />
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-label={open ? "Hide card details" : "Edit card details"}
-          className="shrink-0 text-subtle hover:text-fg"
-        >
-          {open ? "▴" : "▾"}
-        </button>
-        <button
-          type="button"
-          onClick={() => void deleteItem(row.id)}
-          className="invisible shrink-0 text-subtle hover:text-danger group-hover:visible"
-          aria-label="Delete card"
-        >
-          ×
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={`Open ${props.title || "Untitled"}`}
+        className="w-full cursor-pointer p-2 pr-6 text-left"
+      >
+        <span className="block text-sm leading-snug text-fg">
+          {props.title || <span className="text-subtle">Untitled</span>}
+        </span>
 
-      {/* Collapsed summary: what you'd want to see without opening the card. Chips wrap so a
-          long assignee never pushes the due date out of sight. */}
-      {!open && (props.due || props.assignee) ? (
-        <div className="mt-1.5 flex flex-wrap items-center gap-1">
-          {props.due ? (
-            <span className="rounded bg-hover/50 px-1.5 py-0.5 text-[11px] text-muted">
-              Due {formatDueLabel(props.due)}
-            </span>
-          ) : null}
-          {typeof props.assignee === "string" && props.assignee ? (
-            <span
-              title={props.assignee}
-              className="max-w-full truncate rounded bg-hover/50 px-1.5 py-0.5 text-[11px] text-muted"
-            >
-              {props.assignee}
-            </span>
-          ) : null}
-        </div>
-      ) : null}
+        {props.due || props.assignee ? (
+          <span className="mt-1.5 flex flex-wrap items-center gap-1">
+            {props.due ? (
+              <span className="rounded bg-hover/50 px-1.5 py-0.5 text-[11px] text-muted">
+                Due {formatDueLabel(props.due)}
+              </span>
+            ) : null}
+            {typeof props.assignee === "string" && props.assignee ? (
+              <span
+                title={props.assignee}
+                className="max-w-full truncate rounded bg-hover/50 px-1.5 py-0.5 text-[11px] text-muted"
+              >
+                {props.assignee}
+              </span>
+            ) : null}
+          </span>
+        ) : null}
+      </button>
 
-      {open ? (
-        <div className="mt-2 space-y-1.5 border-t border-line pt-2">
-          <div className="flex items-center gap-2 text-xs text-muted">
-            <span className="w-14 shrink-0">Due</span>
-            <DuePicker
-              value={typeof props.due === "string" ? props.due : ""}
-              onChange={(due) => void patchItem(row, { due })}
-              idPrefix="card-due"
-            />
-          </div>
-          <label className="flex items-center gap-2 text-xs text-muted">
-            <span className="w-14 shrink-0">Assignee</span>
-            <AssigneePicker
-              workspaceId={workspaceId}
-              value={typeof props.assignee === "string" ? props.assignee : ""}
-              onChange={(assignee) => void patchItem(row, { assignee })}
-              ariaLabel="Card assignee"
-              className="flex-1 rounded border border-line bg-elevated px-1.5 py-0.5 text-xs text-muted outline-none"
-            />
-          </label>
-        </div>
-      ) : null}
+      <button
+        type="button"
+        onClick={() => void deleteItem(row.id)}
+        className="invisible absolute right-1 top-1 rounded px-1 text-subtle hover:text-danger group-hover:visible"
+        aria-label="Delete card"
+      >
+        ×
+      </button>
     </div>
   );
 }

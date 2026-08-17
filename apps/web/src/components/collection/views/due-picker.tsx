@@ -15,20 +15,21 @@ interface DuePickerProps {
 }
 
 const FIELD =
-  "rounded border border-line bg-app px-1.5 py-1 text-xs text-muted outline-none focus:border-fg";
+  "rounded-lg border border-line bg-app px-2.5 py-1.5 text-sm text-muted outline-none " +
+  "transition-shadow focus:border-muted/60";
 
 export function DuePicker({ value, onChange, compact = false, idPrefix = "due" }: DuePickerProps) {
   const { date, time } = parseDue(value);
 
   return (
-    <span className={compact ? "flex items-center gap-1" : "flex flex-1 items-center gap-1"}>
+    <span className={compact ? "flex w-full items-center gap-2" : "flex flex-1 items-center gap-2"}>
       <input
         type="date"
         value={date}
         onChange={(event) => onChange(formatDue(event.target.value, time))}
         aria-label="Due date"
         data-testid={`${idPrefix}-date`}
-        className={`${FIELD} ${compact ? "" : "flex-1"}`}
+        className={`${FIELD} flex-1`}
       />
       {date ? (
         <input

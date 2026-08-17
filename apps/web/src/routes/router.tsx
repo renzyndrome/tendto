@@ -39,6 +39,19 @@ const collectionRoute = createRoute({
   },
 });
 
+/**
+ * A card's detail dialog is a ROUTE, not component state — so it is linkable, browser Back
+ * closes it, and a refresh reopens the same card (Trello's `/c/<id>` behaviour).
+ */
+const collectionItemRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/c/$collectionId/i/$itemId",
+  component: function CollectionItemRoute() {
+    const { collectionId, itemId } = collectionItemRoute.useParams();
+    return <CollectionView collectionId={collectionId} openItemId={itemId} />;
+  },
+});
+
 const calendarRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/calendar",
@@ -55,6 +68,7 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   pageRoute,
   collectionRoute,
+  collectionItemRoute,
   calendarRoute,
   focusRoute,
 ]);

@@ -13,10 +13,13 @@ export function TableView({
   items,
   columns,
   workspaceId,
+  onOpen,
 }: {
   items: ItemRow[];
   columns: Column[];
   workspaceId: string | null;
+  /** Open the card's detail dialog — the only place a description can be edited. */
+  onOpen: (itemId: string) => void;
 }) {
   if (items.length === 0) {
     return <p className="py-10 text-center text-sm text-subtle">No items yet — add one above.</p>;
@@ -29,6 +32,7 @@ export function TableView({
           <th className="py-2 pr-4 font-medium">Status</th>
           <th className="py-2 pr-4 font-medium">Due</th>
           <th className="py-2 pr-4 font-medium">Assignee</th>
+          <th className="py-2 font-medium" />
         </tr>
       </thead>
       <tbody>
@@ -76,6 +80,16 @@ export function TableView({
                   ariaLabel="Row assignee"
                   className="w-full rounded border border-line bg-app px-1.5 py-1 text-sm text-muted outline-none"
                 />
+              </td>
+              <td className="py-1">
+                <button
+                  type="button"
+                  onClick={() => onOpen(row.id)}
+                  aria-label={`Open ${props.title || "Untitled"}`}
+                  className="rounded px-1.5 py-0.5 text-xs text-subtle hover:bg-hover hover:text-fg"
+                >
+                  Open
+                </button>
               </td>
             </tr>
           );

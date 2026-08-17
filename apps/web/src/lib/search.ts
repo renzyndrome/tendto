@@ -75,7 +75,10 @@ export async function searchWorkspace(
     ),
     // Raw match against the block's JSON text — good enough for MVP; FTS5 later.
     db.getAll<{ id: string; page_id: string; content: string }>(
-      "SELECT id, page_id, content FROM blocks WHERE workspace_id = ? AND content LIKE ? ESCAPE '\\' " +
+      // page_id IS NOT NULL: item descriptions are blocks too, but a block hit navigates to a
+      // page, so they are found via their item instead.
+      "SELECT id, page_id, content FROM blocks WHERE workspace_id = ? AND page_id IS NOT NULL " +
+        "AND content LIKE ? ESCAPE '\\' " +
         "LIMIT ?",
       [workspaceId, like, PER_GROUP],
     ),

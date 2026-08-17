@@ -62,3 +62,137 @@
   --bn-colors-editor-background: transparent;
   --bn-colors-editor-text: rgb(var(--c-fg));
 }
+
+/*
+ * Compact editor (card descriptions) — a text box, not a document.
+ *
+ * BlockNote reserves a wide left gutter for the drag handle and add button; with the side menu
+ * turned off (see block-editor.tsx) that inset is just dead space, so it collapses here and the
+ * whole thing gets a field's border, padding and focus ring. Markdown shortcuts and the
+ * selection toolbar are untouched — only the block chrome goes.
+ */
+.tendto-compact-editor {
+  @apply overflow-hidden rounded-lg border border-line bg-app transition-shadow;
+}
+
+/*
+ * One soft ring on the CONTAINER, and nothing on the text itself.
+ *
+ * Firefox draws its own focus outline on `contenteditable`, which Chromium does not — so this
+ * looked like a hard second box nested inside the field for Firefox users only. The ring is a
+ * low-alpha shadow rather than a bright border because a 1px near-white outline on a dark
+ * dialog reads as a warning, not as focus.
+ */
+.bn-editor:focus,
+.bn-editor:focus-visible,
+.tiptap:focus,
+.tiptap:focus-visible {
+  outline: none;
+}
+
+.tendto-compact-editor:focus-within {
+  border-color: rgb(var(--c-muted) / 0.55);
+  box-shadow: 0 0 0 3px rgb(var(--c-muted) / 0.12);
+}
+
+.tendto-compact-editor .bn-editor {
+  /* Default is 54px each side to clear the (now absent) gutter. */
+  padding: 0.5rem 1rem 1rem;
+  /* Room to actually write a few paragraphs before it scrolls. */
+  min-height: 10rem;
+  /*
+   * Match the surrounding controls (0.875rem). BlockNote's default is 1rem, which is a page's
+   * reading size — inside a dialog whose labels and selects are 12–14px it made the body text
+   * the loudest thing on screen. Headings scale off this via their `em`-based --level, so the
+   * hierarchy is preserved at the smaller base.
+   */
+  font-size: 0.875rem;
+  line-height: 1.65;
+}
+
+/* Give consecutive blocks a little air — at 14px the default rhythm reads as cramped. */
+.tendto-compact-editor .bn-block-outer + .bn-block-outer {
+  margin-top: 0.25rem;
+}
+
+/*
+ * Persistent formatting bar. BlockNoteView renders children AFTER the editable content, so the
+ * container becomes a flex column and the toolbar is ordered to the top rather than being
+ * absolutely positioned (which would overlap the text as you type).
+ */
+.tendto-compact-editor .bn-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.tendto-compact-editor .bn-toolbar {
+  order: -1;
+  /* It ships styled as a floating popup; as a fixed strip it wants to read as part of the
+     field, not as something hovering over it — and with no divider or gap, so the bar and the
+     text are one continuous surface rather than two stacked boxes. */
+  position: static;
+  box-shadow: none;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  /* 0.5rem + the buttons' 0.375rem inset lands the first glyph on the same vertical line as
+     the body text below (0.875rem), so the bar and the text share a left edge. */
+  padding: 0.375rem 0.5rem 0.125rem;
+  gap: 0.125rem;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+/*
+ * Flat controls. Each button ships with its own filled background, which is what made the bar
+ * read as a row of blocks; the fill moves to hover only.
+ */
+.tendto-compact-editor .bn-toolbar button,
+.tendto-compact-editor .bn-toolbar [role="button"] {
+  background: transparent;
+  border: 0;
+  border-radius: 0.375rem;
+  padding-inline: 0.375rem;
+  font-size: 0.75rem;
+}
+
+.tendto-compact-editor .bn-toolbar button:hover,
+.tendto-compact-editor .bn-toolbar [role="button"]:hover {
+  background: rgb(var(--c-hover) / 0.6);
+}
+
+/* Active state (e.g. bold on) still needs to read as pressed. */
+.tendto-compact-editor .bn-toolbar button[data-selected="true"],
+.tendto-compact-editor .bn-toolbar button[aria-pressed="true"] {
+  background: rgb(var(--c-hover) / 0.9);
+}
+
+/* Tighter vertical rhythm than a full page: descriptions are short. */
+.tendto-compact-editor .bn-block-outer:first-child > .bn-block > .bn-block-content {
+  padding-top: 0;
+}
+
+/*
+ * Headings are page-scale by default (h1 = 3em) and dwarf a description box. Keep the
+ * hierarchy, drop the absolute size — a card body's "heading" is a sub-heading of the card
+ * title right above it.
+ *
+ * Override the --level/--prev-level CUSTOM PROPERTIES, not font-size: BlockNote applies
+ * `font-size: var(--level)` from a more specific selector, so a font-size rule here loses.
+ * --prev-level is the same scale applied to the block that follows a heading.
+ */
+.tendto-compact-editor [data-content-type="heading"][data-level="1"],
+.tendto-compact-editor [data-prev-level="1"] {
+  --level: 1.3em;
+  --prev-level: 1.3em;
+}
+.tendto-compact-editor [data-content-type="heading"][data-level="2"],
+.tendto-compact-editor [data-prev-level="2"] {
+  --level: 1.15em;
+  --prev-level: 1.15em;
+}
+.tendto-compact-editor [data-content-type="heading"][data-level="3"],
+.tendto-compact-editor [data-prev-level="3"] {
+  --level: 1em;
+  --prev-level: 1em;
+}
