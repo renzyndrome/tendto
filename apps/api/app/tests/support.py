@@ -4,6 +4,7 @@ Kept out of conftest so tests can import them without importing the fixtures mod
 """
 
 import os
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID, uuid4
@@ -13,7 +14,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.config import get_settings
-from app.models.core import Membership, Page, Workspace
+from app.models.core import FocusSession, Membership, Page, Workspace
 
 # The suite TRUNCATES every table before each test (see conftest._prepare_db), so it must never
 # point at a database anyone cares about. It used to default to DATABASE_URL — the dev database
@@ -133,6 +134,31 @@ async def seed_page(*, workspace_id: UUID, page_id: UUID | None = None, title: s
         session.add(Page(id=page_id, workspace_id=workspace_id, title=title, position=0))
         await session.commit()
     return page_id
+
+
+async def seed_focus_session(
+    *,
+    user_id: str,
+    session_id: UUID | None = None,
+    local_date: str = "2026-08-18",
+    minutes: int = 25,
+    started_at: datetime | None = None,
+) -> UUID:
+    """Insert a focus session directly. Unlike everything else here it takes no workspace —
+    `focus_sessions` is user-owned (see the model)."""
+    session_id = session_id or uuid4()
+    async with TestSession() as session:
+        session.add(
+            FocusSession(
+                id=session_id,
+                user_id=user_id,
+                started_at=started_at or datetime(2026, 8, 18, 9, 0, tzinfo=UTC),
+                local_date=local_date,
+                minutes=minutes,
+            )
+        )
+        await session.commit()
+    return session_id
 
 
 async def fetch(model: Any, pk: Any) -> Any:

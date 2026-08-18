@@ -21,3 +21,17 @@ bucket_definitions:
       - SELECT * FROM blocks WHERE workspace_id = bucket.workspace_id
       - SELECT * FROM collections WHERE workspace_id = bucket.workspace_id
       - SELECT * FROM items WHERE workspace_id = bucket.workspace_id
+
+  # One bucket per USER, holding only that user's own rows. Everything here is PRIVATE by
+  # construction and must never ALSO appear in `workspace_content` above, which fans every row
+  # of a workspace out to every member — putting personal data there leaks it to teammates, and
+  # once a row has synced to a device it is on that device. That is a one-way door.
+  #
+  # The parameter query reads no table: request.user_id() (the verified better-auth JWT `sub`)
+  # IS the bucket key. The `as user_id` alias is what `bucket.user_id` refers to below — rename
+  # one and you must rename the other.
+  user_private:
+    parameters: |
+      SELECT request.user_id() as user_id
+    data:
+      - SELECT * FROM focus_sessions WHERE user_id = bucket.user_id

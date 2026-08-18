@@ -4,8 +4,11 @@
  */
 import { useEffect, useReducer, useRef, useState } from "react";
 
+import { useSession } from "../../lib/auth/client";
+import { recordFocusSession } from "../../lib/focus/sessions";
 import { notify } from "../../lib/notifications";
 import { isFresh, remainingSeconds, useFocusStore } from "../../stores/focus";
+import { FocusStats } from "./focus-stats";
 
 function mmss(total: number): string {
   const m = Math.floor(total / 60);
@@ -15,6 +18,8 @@ function mmss(total: number): string {
 
 export function FocusView() {
   const store = useFocusStore();
+  const { data: session } = useSession();
+  const userId = session?.user?.id ?? null;
   const [, tick] = useReducer((n: number) => n + 1, 0);
   const [draft, setDraft] = useState("");
 
@@ -41,6 +46,17 @@ export function FocusView() {
     if (handled.current === store.endsAt) return;
     handled.current = store.endsAt;
     const finished = store.phase;
+
+    // Record the finished WORK session. Deliberately inside this effect rather than a second
+    // one: the `handled` ref above is what makes this run exactly once, and a parallel effect
+    // would double-record — silently doubling every stat. `endsAt` is still set here;
+    // completePhase() clears it, so derive the start instant before calling it.
+    if (finished === "work" && userId) {
+      const startedAt = new Date(store.endsAt - store.workMin * 60_000);
+      // Fire-and-forget: a failed local write must never stall the timer.
+      void recordFocusSession(userId, store.workMin, startedAt).catch(() => undefined);
+    }
+
     const nextMinutes = finished === "work" ? store.breakMin : store.workMin;
     const next = finished === "work" ? `${nextMinutes} minute break` : `${nextMinutes} minutes of focus`;
     notify(finished === "work" ? "Focus session complete" : "Break over", {
@@ -50,7 +66,7 @@ export function FocusView() {
       tag: "tendto-pomodoro",
     });
     store.completePhase();
-  }, [store, remaining]);
+  }, [store, remaining, userId]);
 
   const remainingTasks = store.tasks.filter((t) => !t.done).length;
 
@@ -219,6 +235,8 @@ export function FocusView() {
           <p className="mt-2 text-xs text-subtle">{remainingTasks} left</p>
         ) : null}
       </div>
+
+      <FocusStats />
     </div>
   );
 }

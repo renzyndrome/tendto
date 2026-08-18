@@ -2,9 +2,14 @@
 
 Invariants (CLAUDE.md):
 - IDs are client-generated UUIDs (server accepts them; uniqueness enforced by PK).
-- Every synced row carries `updated_at` (LWW conflict checks) and `workspace_id` (tenancy).
-- Any new synced table must be added to infra/powersync/sync-rules.yaml and
-  apps/web/src/lib/powersync/schema.ts — see the `sync-rules` skill.
+- Every synced row carries `updated_at` (LWW conflict checks).
+- Tenancy: WORKSPACE-scoped tables carry `workspace_id` and ride the `workspace_content`
+  bucket. A table holding PERSONAL data carries `user_id` instead and rides `user_private` —
+  `workspace_content` fans every row out to every member of the workspace, so putting personal
+  data there leaks it (see FocusSession below). Choosing wrong is a one-way door.
+- Any new synced table must be added to infra/powersync/sync-rules.yaml,
+  apps/web/src/lib/powersync/schema.ts, and `TABLE_MODELS` in app/routers/sync.py (which is the
+  upload allowlist as well as the dispatch map) — see the `sync-rules` skill.
 """
 
 import uuid
@@ -164,3 +169,33 @@ class Item(TimestampMixin, Base):
     properties: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     # e.g. {"title": "...", "done": false, "status": "todo", "due": "2026-07-10", ...}
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class FocusSession(TimestampMixin, Base):
+    """A COMPLETED Pomodoro work session — the first USER-owned synced table.
+
+    Deliberately NOT workspace-scoped. The `workspace_content` bucket sends every row of a
+    workspace to every member, so a `workspace_id` here would put your Pomodoro history on your
+    teammates' devices — and once data has synced to a device it is on that device
+    (docs/planning/05 §isolation). It rides its own user-scoped bucket, `user_private`, and
+    `sync.py` authorizes it by owner instead of by membership.
+    """
+
+    __tablename__ = "focus_sessions"
+    # The only access pattern is "this user's sessions, by day" — the stats below the timer, and
+    # the daily summary server-side. `user_id` leads, so this serves a plain owner lookup too.
+    __table_args__ = (Index("ix_focus_sessions_user_date", "user_id", "local_date"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    # better-auth user id: String(64) and no FK, exactly like memberships.user_id — better-auth
+    # owns the `user` table via its own CLI, so it is not in Base.metadata.
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # The user's LOCAL calendar day as a wall-clock LABEL, not an instant — and not derivable
+    # from `started_at`, because the server never learns the device's timezone. Without it a
+    # 9pm session in UTC+8 files under tomorrow. Same precedent as `items.properties.due`
+    # (see apps/web/src/lib/items/due.ts). TEXT rather than Date: the upload path binds client
+    # values raw, and asyncpg will not accept a date-shaped string for a date column.
+    local_date: Mapped[str] = mapped_column(String(10), nullable=False)  # YYYY-MM-DD
+    # Credited focus minutes (the phase's configured length), not elapsed wall time.
+    minutes: Mapped[int] = mapped_column(Integer, nullable=False)

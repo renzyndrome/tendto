@@ -1,9 +1,11 @@
 /**
  * PowerSync client schema — MUST mirror the server tables that sync.
- * When you change a synced table, update all three together (see `sync-rules` skill):
+ * When you change a synced table, update all FOUR together (see `sync-rules` skill):
  *   1. apps/api/app/models/core.py   (SQLAlchemy + Alembic migration)
  *   2. infra/powersync/sync-rules.yaml
  *   3. this file
+ *   4. `TABLE_MODELS` in apps/api/app/routers/sync.py — the upload allowlist, not just a
+ *      dispatch map: a table missing from it is rejected with a 400.
  */
 import { column, Schema, Table } from "@powersync/web";
 
@@ -76,6 +78,20 @@ const items = new Table(
   { indexes: { by_collection: ["collection_id"] } },
 );
 
+// Focus sessions are USER-private, not workspace content: they ride their own user-scoped
+// bucket (`user_private` in sync-rules.yaml), so there is deliberately no workspace_id here.
+const focusSessions = new Table(
+  {
+    user_id: column.text,
+    started_at: column.text, // ISO timestamp
+    local_date: column.text, // YYYY-MM-DD in the USER's timezone (see the API model)
+    minutes: column.integer,
+    created_at: column.text,
+    updated_at: column.text,
+  },
+  { indexes: { by_date: ["local_date"] } },
+);
+
 export const AppSchema = new Schema({
   workspaces,
   memberships,
@@ -83,6 +99,9 @@ export const AppSchema = new Schema({
   blocks,
   collections,
   items,
+  // Explicit key: Schema names each table from its object key, and the server table is
+  // snake_case while the local const follows the file's camelCase convention.
+  focus_sessions: focusSessions,
 });
 
 export type Database = (typeof AppSchema)["types"];

@@ -2,6 +2,52 @@ import { type Page } from "@playwright/test";
 
 import { expect, test } from "./fixtures";
 
+const AUTH = process.env.VITE_AUTH_URL ?? "http://localhost:13001";
+const API = process.env.VITE_API_URL ?? "http://localhost:18000";
+
+/**
+ * Seed focus history straight through the real upload path, then let it sync back down.
+ *
+ * Going through `POST /sync/upload` rather than poking the replica is deliberate: it exercises
+ * the user-owned authorization branch AND proves the new `user_private` bucket delivers the rows
+ * to this device — which is the half that would otherwise silently not work.
+ */
+async function seedFocusHistory(
+  page: Page,
+  sessions: Array<{ dateKey: string; hour: number; minutes: number }>,
+): Promise<void> {
+  const tokenRes = await page.request.get(`${AUTH}/api/auth/token`);
+  expect(tokenRes.ok(), "could not mint a JWT for seeding").toBeTruthy();
+  const { token } = (await tokenRes.json()) as { token: string };
+
+  const entries = sessions.map(({ dateKey, hour, minutes }) => ({
+    op: "PUT",
+    table: "focus_sessions",
+    id: crypto.randomUUID(),
+    data: {
+      started_at: `${dateKey}T${String(hour).padStart(2, "0")}:00:00Z`,
+      local_date: dateKey,
+      minutes,
+      updated_at: `${dateKey}T${String(hour).padStart(2, "0")}:00:00Z`,
+    },
+  }));
+
+  const res = await page.request.post(`${API}/sync/upload`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { entries },
+  });
+  expect(res.ok(), `seeding failed: ${res.status()} ${await res.text()}`).toBeTruthy();
+}
+
+/** `YYYY-MM-DD` `delta` days from today, local. */
+function dayKey(delta: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + delta);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate(),
+  ).padStart(2, "0")}`;
+}
+
 /**
  * Put the timer at a phase boundary without waiting 25 minutes: write the persisted store with an
  * `endsAt` already in the past, then reload so it rehydrates. The completion effect runs when the
@@ -102,5 +148,55 @@ test.describe("focus mode", () => {
     await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();
     await expect(page.getByTestId("focus-timer")).not.toHaveText("05:00");
     await expect(page.getByTestId("focus-auto")).toBeChecked();
+  });
+
+  test("a finished session is recorded and survives a reload", async ({ authedPage: page }) => {
+    await page.getByRole("button", { name: "Focus" }).click();
+    // Nothing to show before the first session — and no fake zeroes either.
+    await expect(page.getByTestId("focus-stats")).toContainText("your garden starts here");
+
+    await seedElapsedWorkPhase(page, false);
+
+    // The session was recorded by finishing the phase, not by any explicit save.
+    await expect(page.getByTestId("stat-today")).toContainText("25m", { timeout: 20_000 });
+    await expect(page.getByTestId("stat-days")).toContainText("1/7 days");
+
+    // It reached Postgres and came back: a reload rebuilds this from the replica, and the
+    // localStorage timer state carries no history at all.
+    await page.reload();
+    await expect(page.getByTestId("stat-today")).toContainText("25m", { timeout: 30_000 });
+  });
+
+  test("history syncs down and drives the garden, heatmap and bests", async ({
+    authedPage: page,
+  }) => {
+    await seedFocusHistory(page, [
+      { dateKey: dayKey(0), hour: 9, minutes: 50 },
+      { dateKey: dayKey(0), hour: 14, minutes: 25 },
+      { dateKey: dayKey(-1), hour: 10, minutes: 120 },
+      { dateKey: dayKey(-2), hour: 21, minutes: 25 },
+      { dateKey: dayKey(-30), hour: 11, minutes: 25 },
+    ]);
+
+    await page.getByRole("button", { name: "Focus" }).click();
+
+    // Rows the client never wrote locally are here — so the user_private bucket delivered them.
+    await expect(page.getByTestId("stat-today")).toContainText("1h 15m", { timeout: 30_000 });
+
+    // Personal bests span the whole history, including the day a month back. Both of these are
+    // weekday-independent; "best week" is not, so it is deliberately not asserted exactly.
+    const stats = page.getByTestId("focus-stats");
+    await expect(stats).toContainText("2h"); // best day = the 120m session
+    await expect(stats).toContainText("Most sessions"); // today's two, the busiest day
+    await expect(stats.getByText("2", { exact: true }).first()).toBeVisible();
+
+    // The garden grows with the day's TOTAL minutes: today's 50 + 25 = 75 reaches stage 3.
+    // Selected by label rather than index so it doesn't depend on which weekday it is.
+    const todayPlant = page.getByTestId("focus-garden").locator(`svg[aria-label^="${dayKey(0)}"]`);
+    await expect(todayPlant).toHaveAttribute("data-stage", "3");
+
+    // 12 weeks of squares, and the peak-hours histogram rendered.
+    await expect(page.getByTestId("focus-heatmap").locator("span")).toHaveCount(12 * 7);
+    await expect(page.getByTestId("focus-peak-hours")).toBeVisible();
   });
 });
