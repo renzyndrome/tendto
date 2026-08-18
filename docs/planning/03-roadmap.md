@@ -138,6 +138,13 @@ daily recap each evening.
 > the all-day row is simply the existing "date with no time". Giving items a duration would turn
 > this from a task list into a scheduler — a Phase-4-at-earliest decision that has to be argued
 > on its own, not slipped in as calendar polish.
+>
+> **"Unified" now also means across workspaces.** The calendar shows date-bearing items from every
+> workspace you belong to, each badged with its own, and opening one switches you into it. It is
+> the *only* view that spans workspaces, deliberately: "what's today" is a question about your day,
+> not about which sidebar you last clicked. No sync-rule or schema change was needed — sync rules
+> already bucket one per membership, so the data was on the device already. The tenancy boundary
+> is untouched: you still only ever read workspaces you're a member of.
 
 ## Phase 4 — Native shells & earned nice-to-haves
 
@@ -170,6 +177,15 @@ daily recap each evening.
   > server job, no push channel), today-only so a backlog can't notify in bulk, silent for
   > anything already done, and one notification per item. If it ever grows a digest or a badge
   > count, it has crossed the line.
+- ❌ **Gamification that scores you.** Focus mode grew stats and a garden on 2026-08-18, and the
+  research we did first is why it stops where it does. Forest's power comes from *loss* — your
+  tree dies if you leave — and that is exactly the mechanic tied to guilt and streak anxiety; we
+  took the cultivation metaphor and left the punishment, so nothing here ever dies or is taken
+  away. Ruled out by name: **XP, levels, coins, unlockable badges, and a streak counter that
+  resets to zero** (a debt, not a habit — "days focused this week" says the same thing without
+  the cliff). The test any future addition must pass: *if you could maximise the number without
+  actually focusing more, it doesn't ship* — which is why growth tracks minutes, never session
+  count. Leaderboards and teammate comparison stay out under the collaboration-noise bullet.
 - ❌ Feature parity with Notion as a goal. Parity is the trap (doc 01 §3). **Focus is the moat.**
 - ❌ **The Trello card.** Cards open a detail dialog (added 2026-08-17) carrying a title, a rich
   description, status, due and assignee — and deliberately *not* labels, per-card checklists,

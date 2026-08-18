@@ -61,6 +61,14 @@ Entities: `users`, `organizations`, `workspaces`, `memberships`, `pages`, `block
 >   synced** — it holds other people's email addresses and a bearer token, which have no business
 >   on every member's device — so it is absent from `sync-rules.yaml` and the client schema, and
 >   the settings panel reads it over the API.
+> - **Not everything is workspace-scoped: `focus_sessions` (2026-08-18) is the first
+>   USER-owned synced table.** The `workspace_content` bucket delivers every row of a workspace
+>   to every member, so personal history carrying a `workspace_id` would land on teammates'
+>   devices — irreversibly, per the one-way-door rule below. It carries `user_id` instead and
+>   rides a second bucket, `user_private`, whose parameter query is just `request.user_id()`.
+>   FastAPI gained the matching upload rule: user-owned tables authorize against the token
+>   subject rather than `memberships`. The three isolation layers are unchanged in spirit — this
+>   adds a second *tenant key*, not a second model.
 > - **A block belongs to exactly one owner: a page *or* an item.** `blocks.page_id` became
 >   nullable, `blocks.item_id` was added, and a CHECK enforces the XOR in the database (both
 >   columns arrive from a client). A card's description is therefore the same primitive as a

@@ -26,13 +26,44 @@ Everything downstream follows from that:
 - **Adding duration would be the moment to stop and think.** It turns a task list into a
   scheduler, and every "does this add clutter?" answer after that gets harder.
 
-## The quick-create bubble needs one control Google doesn't
+## The quick-create bubble asks for a collection only when there IS a choice
 
-Clicking an empty slot opens Google's quick-create bubble: title, time, save. Ours adds a
-**collection picker**, because an item must belong to a collection — guessing silently would drop
-tasks into the wrong one, and the wrong collection is invisible from the calendar. It defaults to
-the first collection and remembers nothing, which is deliberate: the list is short and a
-remembered default that goes stale is worse than one you can see.
+Clicking an empty slot opens Google's quick-create bubble: title, time, save. Ours can also need a
+**collection picker**, because `items.collection_id` is required — with two or more collections a
+silent guess buries the task somewhere you won't look. With one collection (or none) the question
+has a single answer, so the picker is hidden: Renzy hit a lone dropdown reading "Untitled" (the
+default name from `createCollection`) and reasonably asked what it even was. When shown it is
+labelled `in ___`, so the row reads "05:00 PM in Marketing" rather than a bare mystery value.
+
+**There is still no separate workspace control** even now that the calendar spans workspaces (see
+below): choosing the collection already chooses the workspace, so a second control could only
+contradict the first. The options are `<optgroup>`ed by workspace instead, and the created item
+takes `workspace_id` from the **chosen collection**, never from the active workspace — those
+differ the moment you plot into another workspace from here.
+
+## The calendar is the ONE view that spans workspaces
+
+Every other surface is scoped to the active workspace. The calendar deliberately is not (asked for
+2026-08-17): a deadline is a deadline whether it came from work or personal, and splitting them
+means checking two calendars to answer "what's today". `useDatedItems` in `lib/calendar-items.ts`
+queries `workspace_id IN (…)` over the visible set.
+
+- **No sync-rule or schema change was needed.** `sync-rules.yaml` already buckets one
+  `workspace_content` per membership, so every workspace's items are on the device already; this
+  only stopped filtering them out. Reading across workspaces is authorised by construction.
+- **The authorised set is `useVisibleWorkspaces()`** (`lib/use-workspaces.ts`), NOT the raw
+  `workspaces` table — the replica can hold workspaces the server no longer acknowledges, so the
+  `knownWorkspaceIds` filter has to apply here as much as in the switcher. That rule now lives in
+  one hook, which the sidebar uses too, precisely so the two can't drift.
+- **Opening an item switches the active workspace** when it belongs to another one. The card
+  renders inside its collection, which is workspace-scoped, so following the item is the only
+  coherent option — leaving the sidebar pointed elsewhere shows you a card from a workspace you
+  are apparently not in.
+- **Badges only appear with two or more workspaces.** Same rule as the collection picker: a label
+  that says the same thing on every row tells you nothing. `SELECT … WHERE 1 = 0` covers the
+  still-loading case, because `IN ()` is not valid SQLite.
+- There is deliberately **no per-workspace show/hide** (Google's calendar checkboxes). If mixing
+  ever becomes the complaint, that is the feature to add — not a second scoped calendar.
 
 ## Google behaviours deliberately NOT copied
 

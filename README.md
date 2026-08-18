@@ -81,8 +81,12 @@ cd apps/web && npx playwright test # end-to-end (boot the stack first: make e2e-
 - **Collections** — one `items` primitive as checklist / list / table / kanban, plus a card
   detail dialog with a rich description, assignee and due date + optional time.
 - **Shared workspaces** — multiple workspaces, members and roles, invitations by email.
-- **Organize + intelligence** — unified calendar (month grid + a day view you can plot tasks on),
-  instant search, export, the daily AI summary.
+- **Organize + intelligence** — unified calendar (month grid + a day view you can plot tasks on,
+  spanning every workspace), instant search, export, and a **Daily recap** — the AI summary with
+  due-aware recommendations, powered by your local `claude`/`codex` CLI, any OpenAI-compatible
+  API, or an offline fallback (`AI_CLI` / `AI_API_KEY` in `.env`).
+- **Focus** — a Pomodoro timer that waits for you between phases, with a garden, a consistency
+  heatmap and your peak hours built from synced session history.
 - Plus light/dark theming and opt-in due/Pomodoro reminders.
 
 Still open: presence, comments/@mentions, RLS hardening, pgvector semantic search, Stripe, and

@@ -21,6 +21,27 @@ an **offline/local AI option** Notion structurally can't match. All facts curren
 > scheduler + delivery are deferred. Configure with `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL`
 > (point `AI_BASE_URL` at an Ollama `/v1` for the local option). The **interactive** tier
 > (per-page Summarize, Ask AI, workspace Q&A + pgvector) is not built yet.
+>
+> **Status (2026-08-18):** the summary is now a real, visible feature, and it *recommends*.
+>
+> - **A third engine: the local `claude`/`codex` CLI** (`AI_CLI=claude`), shelling out to the
+>   operator's already-authenticated subscription — no API key, no per-token bill. Engine order:
+>   `AI_CLI` > `AI_API_KEY` > offline fallback. This is a **dev/self-host convenience only**: a
+>   hosted multi-tenant deployment must use API keys, both for the vendors' subscription terms
+>   (one person's plan serving other users) and because the CLI is a real process on the server
+>   host. Note `AI_BASE_URL` already covers Anthropic's OpenAI-compat endpoint
+>   (`https://api.anthropic.com/v1`), so "use the API" was config, not code.
+> - **The digest gained the forward-looking half**: overdue and next-two-days items (bounded,
+>   never `done`), so the model's "Tomorrow" section recommends specific tasks by name instead
+>   of inventing generalities — and an idle day with a deadline is no longer reported as calm.
+> - **First UI surface**: a sidebar **Daily recap** view (`/recap`, days routable like the
+>   calendar's), calling `POST /ai/daily-summary` with the *local* date and caching per day so
+>   browsing history doesn't re-bill. The scheduled ambient job + delivery remain deferred.
+> - **Structured, not a text blob**: the endpoint returns the digest alongside the prose
+>   (`activity` + `engine`), so the UI renders overdue in the danger colour and upcoming in the
+>   new `warn` token, with the AI prose as the narrative — hidden under the offline engine,
+>   where it would only repeat the digest. The recap also summarizes **periods**: day, week,
+>   month, or everything so far (calendar-aligned; recommendations always anchored on now).
 
 ## Notion AI in 2026 — the benchmark (what to adopt, what to skip)
 

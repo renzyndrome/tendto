@@ -21,6 +21,10 @@ decisions (sync model, stack, TanStack Router-not-Start, no Flutter) without bei
    TanStack Query. Query is only for true API calls (auth, billing, AI).
 6. **Tenancy**: every tenant-scoped table has `workspace_id` (and org where relevant); sync rules
    bucket by workspace; RLS is the backstop. New tables must follow this or they will not sync.
+   **Exception — personal data.** `workspace_content` reaches every member of the workspace, so
+   a table holding one person's data (`focus_sessions`) carries `user_id` instead and rides the
+   `user_private` bucket, authorized by owner rather than by membership. Choosing the wrong
+   bucket leaks data irreversibly; see the `sync-rules` skill, step 0.
 
 ## Stack
 
