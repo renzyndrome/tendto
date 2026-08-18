@@ -29,13 +29,10 @@ import {
   timeToMinutes,
   toDateKey,
 } from "../../lib/calendar";
+import { useDatedItems, type CalendarItem } from "../../lib/calendar-items";
 import { formatDue, parseDue } from "../../lib/items/due";
-import {
-  createItem,
-  parseProperties,
-  patchItem,
-  type ItemRow,
-} from "../../lib/items/mutations";
+import { createItem, patchItem } from "../../lib/items/mutations";
+import { useVisibleWorkspaces, type WorkspaceRow } from "../../lib/use-workspaces";
 import { useUiStore } from "../../stores/ui";
 
 const HOUR_HEIGHT = 56;
@@ -43,13 +40,8 @@ const PX_PER_MINUTE = HOUR_HEIGHT / 60;
 /** Where the grid scrolls to when the day isn't today — the working day, not midnight. */
 const DEFAULT_SCROLL_HOUR = 7;
 
-interface DayItem {
-  row: ItemRow;
-  id: string;
-  collectionId: string;
-  title: string;
-  minutes: number; // -1 for all-day
-}
+/** A calendar item placed on this day: `minutes` since midnight, or -1 for all-day. */
+type DayItem = CalendarItem & { minutes: number };
 
 interface Draft {
   minutes: number;
@@ -58,33 +50,27 @@ interface Draft {
 
 export function DayView({ dateKey }: { dateKey: string }) {
   const navigate = useNavigate();
-  const workspaceId = useUiStore((s) => s.activeWorkspaceId);
+  const setActiveWorkspace = useUiStore((s) => s.setActiveWorkspace);
+  const activeWorkspaceId = useUiStore((s) => s.activeWorkspaceId);
   const day = useMemo(() => parseDateKey(dateKey) ?? new Date(), [dateKey]);
   const isToday = toDateKey(day) === toDateKey(new Date());
 
-  const { data: rows } = useQuery<ItemRow>(
-    "SELECT * FROM items WHERE workspace_id = ? AND json_extract(properties, '$.due') LIKE ?",
-    [workspaceId ?? "", `${dateKey}%`],
-  );
+  const workspaces = useVisibleWorkspaces();
+  const items = useDatedItems(workspaces, dateKey);
+  // With a single workspace every badge would say the same thing, so there is nothing to tell.
+  const showWorkspace = workspaces.length > 1;
 
   const { allDay, timed } = useMemo(() => {
     const all: DayItem[] = [];
     const slotted: DayItem[] = [];
-    for (const row of rows) {
-      const props = parseProperties(row);
-      const { date, time } = parseDue(props.due);
+    for (const item of items) {
+      const { date, time } = parseDue(item.due);
       if (date !== dateKey) continue; // LIKE is a prefix match; be exact about the day
-      const item: DayItem = {
-        row,
-        id: row.id,
-        collectionId: row.collection_id,
-        title: props.title || "Untitled",
-        minutes: time ? timeToMinutes(time) : -1,
-      };
-      (item.minutes < 0 ? all : slotted).push(item);
+      const placed = { ...item, minutes: time ? timeToMinutes(time) : -1 };
+      (placed.minutes < 0 ? all : slotted).push(placed);
     }
     return { allDay: all, timed: layoutByTime(slotted) };
-  }, [rows, dateKey]);
+  }, [items, dateKey]);
 
   const [draft, setDraft] = useState<Draft | null>(null);
 
@@ -94,6 +80,9 @@ export function DayView({ dateKey }: { dateKey: string }) {
   }
 
   function openItem(item: DayItem): void {
+    // The card renders inside its collection, which is workspace-scoped — so follow the item
+    // rather than leaving the sidebar pointed somewhere else.
+    if (item.workspaceId !== activeWorkspaceId) setActiveWorkspace(item.workspaceId);
     void navigate({
       to: "/c/$collectionId/i/$itemId",
       params: { collectionId: item.collectionId, itemId: item.id },
@@ -153,6 +142,7 @@ export function DayView({ dateKey }: { dateKey: string }) {
       <AllDayRow
         items={allDay}
         onOpen={openItem}
+        showWorkspace={showWorkspace}
         onDropItem={(id) => {
           const item = timed.find((entry) => entry.id === id);
           if (item) reschedule(item, null);
@@ -164,6 +154,7 @@ export function DayView({ dateKey }: { dateKey: string }) {
         <QuickCreate
           dateKey={dateKey}
           minutes={-1}
+          workspaces={workspaces}
           onClose={() => setDraft(null)}
           className="mt-2 max-w-sm"
         />
@@ -179,6 +170,8 @@ export function DayView({ dateKey }: { dateKey: string }) {
         isToday={isToday}
         items={timed}
         draft={draft}
+        workspaces={workspaces}
+        showWorkspace={showWorkspace}
         onOpen={openItem}
         onPickSlot={(minutes) => setDraft({ minutes, allDay: false })}
         onMoveItem={(id, minutes) => {
@@ -196,11 +189,13 @@ export function DayView({ dateKey }: { dateKey: string }) {
 function AllDayRow({
   items,
   onOpen,
+  showWorkspace,
   onDropItem,
   onAdd,
 }: {
   items: DayItem[];
   onOpen: (item: DayItem) => void;
+  showWorkspace: boolean;
   onDropItem: (id: string) => void;
   onAdd: () => void;
 }) {
@@ -232,7 +227,7 @@ function AllDayRow({
         }
       >
         {items.map((item) => (
-          <DayChip key={item.id} item={item} onOpen={onOpen} />
+          <DayChip key={item.id} item={item} onOpen={onOpen} showWorkspace={showWorkspace} />
         ))}
       </div>
     </div>
@@ -246,6 +241,8 @@ function TimeGrid({
   isToday,
   items,
   draft,
+  workspaces,
+  showWorkspace,
   onOpen,
   onPickSlot,
   onMoveItem,
@@ -255,6 +252,8 @@ function TimeGrid({
   isToday: boolean;
   items: Array<DayItem & { lane: number; lanes: number }>;
   draft: Draft | null;
+  workspaces: WorkspaceRow[];
+  showWorkspace: boolean;
   onOpen: (item: DayItem) => void;
   onPickSlot: (minutes: number) => void;
   onMoveItem: (id: string, minutes: number) => void;
@@ -342,6 +341,7 @@ function TimeGrid({
               key={item.id}
               item={item}
               onOpen={onOpen}
+              showWorkspace={showWorkspace}
               onGrab={(offset) => {
                 grabOffset.current = offset;
               }}
@@ -352,6 +352,7 @@ function TimeGrid({
             <QuickCreate
               dateKey={dateKey}
               minutes={draft.minutes}
+              workspaces={workspaces}
               onClose={onCloseDraft}
               className="absolute left-2 right-2 max-w-sm"
               style={{
@@ -370,10 +371,12 @@ function TimeGrid({
 function DayBlock({
   item,
   onOpen,
+  showWorkspace,
   onGrab,
 }: {
   item: DayItem & { lane: number; lanes: number };
   onOpen: (item: DayItem) => void;
+  showWorkspace: boolean;
   onGrab: (offset: number) => void;
 }) {
   const width = 100 / item.lanes;
@@ -408,11 +411,20 @@ function DayBlock({
         {minutesToTime(item.minutes)}
       </span>
       <span className="truncate">{item.title}</span>
+      <WorkspaceBadge item={item} show={showWorkspace} />
     </button>
   );
 }
 
-function DayChip({ item, onOpen }: { item: DayItem; onOpen: (item: DayItem) => void }) {
+function DayChip({
+  item,
+  onOpen,
+  showWorkspace,
+}: {
+  item: DayItem;
+  onOpen: (item: DayItem) => void;
+  showWorkspace: boolean;
+}) {
   return (
     <button
       type="button"
@@ -427,49 +439,95 @@ function DayChip({ item, onOpen }: { item: DayItem; onOpen: (item: DayItem) => v
       }}
       title={item.title}
       data-testid={`day-item-${item.id}`}
-      className="max-w-full truncate rounded border border-line bg-surface px-2 py-0.5 text-xs text-fg hover:bg-hover"
+      className="flex max-w-full items-center gap-1.5 rounded border border-line bg-surface px-2 py-0.5 text-xs text-fg hover:bg-hover"
     >
-      {item.title}
+      <span className="truncate">{item.title}</span>
+      <WorkspaceBadge item={item} show={showWorkspace} />
     </button>
+  );
+}
+
+/** Which workspace a task came from — the calendar is the one view that mixes them. */
+function WorkspaceBadge({ item, show }: { item: DayItem; show: boolean }) {
+  if (!show || !item.workspaceName) return null;
+  return (
+    <span
+      data-testid="day-workspace-badge"
+      className="ml-auto max-w-[40%] shrink-0 truncate rounded bg-hover px-1 text-[10px] text-subtle"
+    >
+      {item.workspaceName}
+    </span>
   );
 }
 
 /* ------------------------------------------------------------------ quick create */
 
 /**
- * The bubble Google pops when you click an empty slot: type a title, pick which collection it
- * lands in, Enter to save. The collection picker is the one thing Google doesn't need and we do —
- * an item has to belong to a collection, so guessing silently would drop tasks into the wrong one.
+ * The bubble Google pops when you click an empty slot: type a title, Enter to save.
+ *
+ * It asks for a destination only when there is genuinely a choice. `items.collection_id` is
+ * required, so with two or more collections a silent guess buries the task somewhere you won't
+ * look — but with one (or none) the question has a single answer and a picker reading "Untitled"
+ * is just noise. The workspace is never a separate control: since the calendar spans workspaces,
+ * choosing the collection already chooses the workspace, and the options are grouped by workspace
+ * so that stays obvious. The default is the ACTIVE workspace's first collection — you are almost
+ * always plotting into the one you're working in.
  */
 function QuickCreate({
   dateKey,
   minutes,
+  workspaces,
   onClose,
   className,
   style,
 }: {
   dateKey: string;
   minutes: number;
+  workspaces: WorkspaceRow[];
   onClose: () => void;
   className: string;
   style?: CSSProperties;
 }) {
-  const workspaceId = useUiStore((s) => s.activeWorkspaceId);
-  const { data: collections } = useQuery<{ id: string; name: string }>(
-    "SELECT id, name FROM collections WHERE workspace_id = ? ORDER BY created_at",
-    [workspaceId ?? ""],
+  const activeWorkspaceId = useUiStore((s) => s.activeWorkspaceId);
+  const ids = useMemo(() => workspaces.map((workspace) => workspace.id), [workspaces]);
+  const { data: collections } = useQuery<{ id: string; name: string; workspace_id: string }>(
+    ids.length
+      ? `SELECT id, name, workspace_id FROM collections WHERE workspace_id IN (${ids
+          .map(() => "?")
+          .join(", ")}) ORDER BY created_at`
+      : "SELECT id, name, workspace_id FROM collections WHERE 1 = 0",
+    ids,
   );
 
   const [title, setTitle] = useState("");
   const [time, setTime] = useState(minutes < 0 ? "" : minutesToTime(minutes));
   const [picked, setPicked] = useState("");
   const [saving, setSaving] = useState(false);
-  const collectionId = picked || collections[0]?.id || "";
+
+  const fallback =
+    collections.find((collection) => collection.workspace_id === activeWorkspaceId) ??
+    collections[0];
+  const collectionId = picked || fallback?.id || "";
+  const target = collections.find((collection) => collection.id === collectionId);
+
+  /** Options grouped by workspace, so picking a collection visibly picks a workspace too. */
+  const groups = useMemo(
+    () =>
+      workspaces
+        .map((workspace) => ({
+          workspace,
+          collections: collections.filter((c) => c.workspace_id === workspace.id),
+        }))
+        .filter((group) => group.collections.length > 0),
+    [workspaces, collections],
+  );
 
   async function save(): Promise<void> {
-    if (!workspaceId || !collectionId || !title.trim() || saving) return;
+    if (!target || !title.trim() || saving) return;
     setSaving(true);
-    await createItem(workspaceId, collectionId, {
+    // The workspace comes from the chosen collection, never from the active one — they differ
+    // whenever you plot into another workspace from here.
+    await createItem(target.workspace_id, target.id, {
       title: title.trim(),
       due: formatDue(dateKey, time),
     });
@@ -501,19 +559,34 @@ function QuickCreate({
             data-testid="quick-create-time"
             className="rounded-lg border border-line bg-app px-2.5 py-1.5 text-xs text-muted outline-none focus:border-muted/60"
           />
-          <select
-            value={collectionId}
-            onChange={(event) => setPicked(event.target.value)}
-            aria-label="Collection"
-            data-testid="quick-create-collection"
-            className="min-w-0 flex-1 rounded-lg border border-line bg-app px-2.5 py-1.5 text-xs text-muted outline-none focus:border-muted/60"
-          >
-            {collections.map((collection) => (
-              <option key={collection.id} value={collection.id}>
-                {collection.name}
-              </option>
-            ))}
-          </select>
+          {collections.length > 1 ? (
+            <label className="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-subtle">
+              in
+              <select
+                value={collectionId}
+                onChange={(event) => setPicked(event.target.value)}
+                aria-label="Collection"
+                data-testid="quick-create-collection"
+                className="min-w-0 flex-1 rounded-lg border border-line bg-app px-2.5 py-1.5 text-xs text-muted outline-none focus:border-muted/60"
+              >
+                {groups.length > 1
+                  ? groups.map((group) => (
+                      <optgroup key={group.workspace.id} label={group.workspace.name}>
+                        {group.collections.map((collection) => (
+                          <option key={collection.id} value={collection.id}>
+                            {collection.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))
+                  : collections.map((collection) => (
+                      <option key={collection.id} value={collection.id}>
+                        {collection.name}
+                      </option>
+                    ))}
+              </select>
+            </label>
+          ) : null}
         </div>
         <div className="flex justify-end gap-2">
           <button

@@ -45,6 +45,11 @@ test.describe("calendar day view", () => {
     await grid.click({ position: { x: 120, y: yForTime(9) } });
     await expect(page.getByTestId("quick-create-time")).toHaveValue("09:00");
 
+    // One collection means there is no choice to make, so the picker stays out of the way.
+    await expect(page.getByTestId("quick-create-collection")).toHaveCount(0);
+    // Likewise a lone workspace: a badge on every task saying the same thing tells you nothing.
+    await expect(page.getByTestId("day-workspace-badge")).toHaveCount(0);
+
     await page.getByTestId("quick-create-title").fill(marker);
     await page.getByRole("button", { name: "Save" }).click();
 
@@ -85,6 +90,96 @@ test.describe("calendar day view", () => {
     // Dropping it on the all-day row clears the time entirely.
     await block.dragTo(page.getByTestId("day-all-day"));
     await expect(page.getByTestId("day-all-day").getByText(marker)).toBeVisible();
+  });
+
+  test("with more than one collection, the picker appears and is honoured", async ({
+    authedPage: page,
+  }) => {
+    const marker = `pick-${Date.now().toString(36)}`;
+    const date = todayKey();
+
+    await page.getByRole("button", { name: "New collection" }).click();
+    await expect(page).toHaveURL(/\/c\//);
+    const first = new URL(page.url()).pathname.split("/")[2];
+
+    await page.getByRole("button", { name: "New collection" }).click();
+    await expect(page).not.toHaveURL(new RegExp(first));
+
+    await page.getByRole("button", { name: "Calendar" }).click();
+    await page.getByTestId(`cal-day-${date}`).click();
+
+    const grid = page.getByTestId("day-grid");
+    await grid.click({ position: { x: 120, y: yForTime(9) } });
+
+    // Now there is a real choice — send it to the FIRST collection, not the default.
+    await page.getByTestId("quick-create-collection").selectOption(first);
+    await page.getByTestId("quick-create-title").fill(marker);
+    await page.getByRole("button", { name: "Save" }).click();
+
+    await grid.getByTestId(/^day-item-/).filter({ hasText: marker }).click();
+    await expect(page).toHaveURL(new RegExp(`/c/${first}/i/`));
+  });
+
+  test("tasks from every workspace share the calendar, badged with where they came from", async ({
+    authedPage: page,
+  }) => {
+    const date = todayKey();
+    const first = `wsA-${Date.now().toString(36)}`;
+    const second = `wsB-${Date.now().toString(36)}`;
+
+    // A task in the bootstrapped workspace...
+    await page.getByRole("button", { name: "New collection" }).click();
+    await expect(page).toHaveURL(/\/c\//);
+    await page.getByRole("button", { name: "Calendar" }).click();
+    await page.getByTestId(`cal-day-${date}`).click();
+    const grid = page.getByTestId("day-grid");
+    await grid.click({ position: { x: 120, y: yForTime(9) } });
+    await page.getByTestId("quick-create-title").fill(first);
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(grid.getByTestId(/^day-item-/).filter({ hasText: first })).toBeVisible();
+
+    // ...and a task in a second workspace.
+    await page.getByRole("button", { name: "Switch workspace" }).click();
+    await page.getByRole("menuitem", { name: "+ New workspace" }).click();
+    const nameInput = page.getByLabel("New workspace name");
+    await nameInput.fill("Second Workspace");
+    await nameInput.press("Enter");
+    await expect(page.getByRole("button", { name: "Switch workspace" })).toContainText(
+      "Second Workspace",
+      { timeout: 30_000 },
+    );
+    await page.getByRole("button", { name: "New collection" }).click();
+    await expect(page).toHaveURL(/\/c\//);
+    await page.getByRole("button", { name: "Calendar" }).click();
+    // By now today's cell holds the first task's chip, so click the date number, not the cell.
+    await page.getByTestId(`cal-day-${date}`).getByRole("button", { name: `Open ${date}` }).click();
+    await grid.click({ position: { x: 120, y: yForTime(14) } });
+    await page.getByTestId("quick-create-title").fill(second);
+    await page.getByRole("button", { name: "Save" }).click();
+
+    // Both are on the same day, each saying where it came from.
+    const blockA = grid.getByTestId(/^day-item-/).filter({ hasText: first });
+    const blockB = grid.getByTestId(/^day-item-/).filter({ hasText: second });
+    await expect(blockA).toBeVisible({ timeout: 20_000 });
+    await expect(blockA.getByTestId("day-workspace-badge")).toHaveText("My Workspace");
+    await expect(blockB.getByTestId("day-workspace-badge")).toHaveText("Second Workspace");
+
+    // Opening one from another workspace follows it there, rather than leaving the sidebar behind.
+    await blockA.click();
+    await expect(page.getByTestId("item-detail")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Switch workspace" })).toContainText(
+      "My Workspace",
+    );
+
+    // The month grid badges them too.
+    await page.getByRole("button", { name: "Close card" }).click();
+    await page.getByRole("button", { name: "Calendar" }).click();
+    // Generous: these rows come from another workspace's bucket, and a sync-rules change makes
+    // PowerSync reprocess every bucket, which can slow the first sync-down right after a deploy.
+    const cell = page.getByTestId(`cal-day-${date}`);
+    await expect(cell.getByText(first)).toBeVisible({ timeout: 30_000 });
+    await expect(cell.getByText(second)).toBeVisible({ timeout: 30_000 });
+    await expect(cell.getByTestId("cal-workspace-badge").first()).toBeVisible();
   });
 
   test("a task with no time sits in the all-day row and opens its card", async ({
