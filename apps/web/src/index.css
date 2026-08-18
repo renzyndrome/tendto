@@ -21,6 +21,7 @@
     --c-muted: 82 82 82; /* secondary text */
     --c-subtle: 163 163 163; /* placeholders, meta, empty states */
     --c-danger: 220 38 38;
+    --c-warn: 180 83 9; /* upcoming-but-not-late; darker amber for light-bg contrast */
     --c-accent: 23 23 23; /* primary button fill */
     --c-on-accent: 255 255 255; /* text on the accent fill */
   }
@@ -37,6 +38,7 @@
     --c-muted: 190 190 190;
     --c-subtle: 130 130 130;
     --c-danger: 248 113 113;
+    --c-warn: 251 191 36;
     --c-accent: 245 245 245;
     --c-on-accent: 23 23 23;
   }

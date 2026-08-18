@@ -3,6 +3,9 @@ import { createRootRoute, createRoute, createRouter } from "@tanstack/react-rout
 
 import { CalendarView } from "../components/calendar/calendar-view";
 import { DayView } from "../components/calendar/day-view";
+import { DailyRecap } from "../components/recap/daily-recap";
+import { toDateKey } from "../lib/calendar";
+import { isPeriod, type Period } from "../lib/recap";
 import { CollectionView } from "../components/collection/collection-view";
 import { PageEditor } from "../components/editor/page-editor";
 import { FocusView } from "../components/focus/focus-view";
@@ -78,6 +81,35 @@ const focusRoute = createRoute({
   component: FocusView,
 });
 
+/** The recap lands on today; a specific anchor day is a route like the calendar's, and for the
+ *  same reasons (linkable, Back steps out, reload stays put). The PERIOD (day/week/month/all)
+ *  rides as a search param so a shared link carries the whole view. */
+// `period` stays optional in the schema so plain `navigate({ to: "/recap" })` keeps compiling;
+// consumers default it to "day".
+const recapSearch = (search: Record<string, unknown>): { period?: Period } =>
+  isPeriod(search.period) ? { period: search.period } : {};
+
+const recapRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/recap",
+  validateSearch: recapSearch,
+  component: function RecapTodayRoute() {
+    const { period } = recapRoute.useSearch();
+    return <DailyRecap anchorKey={toDateKey(new Date())} period={period ?? "day"} />;
+  },
+});
+
+const recapDayRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/recap/$date",
+  validateSearch: recapSearch,
+  component: function RecapDayRoute() {
+    const { date } = recapDayRoute.useParams();
+    const { period } = recapDayRoute.useSearch();
+    return <DailyRecap anchorKey={date} period={period ?? "day"} />;
+  },
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   pageRoute,
@@ -86,6 +118,8 @@ const routeTree = rootRoute.addChildren([
   calendarRoute,
   calendarDayRoute,
   focusRoute,
+  recapRoute,
+  recapDayRoute,
 ]);
 
 export const router = createRouter({ routeTree });

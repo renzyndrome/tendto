@@ -16,6 +16,7 @@ import { createCollection, deleteCollectionCascade } from "../../lib/collections
 import { exportWorkspace } from "../../lib/export";
 import { createPage, deletePageCascade } from "../../lib/pages";
 import { disconnectAndClearDb } from "../../lib/powersync/client";
+import { useVisibleWorkspaces } from "../../lib/use-workspaces";
 import { createWorkspace } from "../../lib/workspaces";
 import { useUiStore } from "../../stores/ui";
 import { NotificationToggle } from "./notification-toggle";
@@ -24,11 +25,6 @@ import { WorkspaceSettings } from "./workspace-settings";
 import { WorkspaceSwitcher } from "./workspace-switcher";
 
 interface CollectionRow {
-  id: string;
-  name: string;
-}
-
-interface WorkspaceRow {
   id: string;
   name: string;
 }
@@ -52,14 +48,9 @@ export function Sidebar() {
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const { data: workspaceRows } = useQuery<WorkspaceRow>("SELECT id, name FROM workspaces");
-  const knownIds = useUiStore((s) => s.knownWorkspaceIds);
-  // Same filter as the switcher: never count or offer a workspace the server doesn't
-  // acknowledge (see lib/bootstrap.ts).
-  const workspaces = useMemo(
-    () => (knownIds ? workspaceRows.filter((row) => knownIds.includes(row.id)) : workspaceRows),
-    [workspaceRows, knownIds],
-  );
+  // Never count or offer a workspace the server doesn't acknowledge — the shared hook is where
+  // that rule lives, so the calendar and the switcher can't drift apart (see lib/bootstrap.ts).
+  const workspaces = useVisibleWorkspaces();
   const activeWorkspace = workspaces.find((workspace) => workspace.id === workspaceId);
 
   const { data: pages } = useQuery<PageRow>(
@@ -200,6 +191,7 @@ export function Sidebar() {
           <SidebarButton label="Search…" hint="⌘K" onClick={() => setSearchOpen(true)} />
           <SidebarButton label="Calendar" onClick={() => navigate({ to: "/calendar" })} />
           <SidebarButton label="Focus" onClick={() => navigate({ to: "/focus" })} />
+          <SidebarButton label="Daily recap" onClick={() => navigate({ to: "/recap" })} />
         </div>
 
         <SectionHeader label="Pages" newLabel="New page" onNew={() => void handleNewPage(null)} />

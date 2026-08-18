@@ -19,6 +19,7 @@ export default {
         muted: "rgb(var(--c-muted) / <alpha-value>)",
         subtle: "rgb(var(--c-subtle) / <alpha-value>)",
         danger: "rgb(var(--c-danger) / <alpha-value>)",
+        warn: "rgb(var(--c-warn) / <alpha-value>)",
         accent: "rgb(var(--c-accent) / <alpha-value>)",
         "on-accent": "rgb(var(--c-on-accent) / <alpha-value>)",
       },

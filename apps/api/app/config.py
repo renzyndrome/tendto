@@ -1,6 +1,14 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# The repo-root .env, located from THIS file — never from the process CWD. Uvicorn is started
+# with `cd apps/api` (scripts/e2e-stack.sh), so a relative env_file silently resolved to the
+# nonexistent apps/api/.env and the API ran on defaults; nobody noticed for weeks because every
+# default matches the dev ports. Real environment variables still take precedence, and a
+# missing file (prod containers) is ignored — this only fixes where the DEV file is found.
+_REPO_ROOT_ENV = Path(__file__).resolve().parents[3] / ".env"
 
 
 class Settings(BaseSettings):
@@ -14,9 +22,15 @@ class Settings(BaseSettings):
     powersync_url: str = "http://localhost:18080"
     # Public web origin, used for CORS (Vite dev server by default)
     web_url: str = "http://localhost:15173"
-    # AI layer (doc 06). An empty ai_api_key selects the offline FallbackProvider (no network,
-    # no key), which keeps dev and the whole test suite network-free. Set these to point at an
-    # OpenAI-compatible endpoint — a hosted API or a self-hosted Ollama server's /v1 base URL.
+    # AI layer (doc 06). Three engines behind one port, picked in this order:
+    #   1. ai_cli ("claude" or "codex") — shell out to an installed, subscription-authenticated
+    #      CLI. No API key, no per-token billing; dev/self-host only (see provider.py).
+    #   2. ai_api_key — an OpenAI-compatible HTTP endpoint: OpenAI, Anthropic's compat endpoint
+    #      (https://api.anthropic.com/v1), or a self-hosted Ollama server's /v1 base URL.
+    #   3. Neither — the offline FallbackProvider (no network), which keeps dev and the whole
+    #      test suite network-free.
+    ai_cli: str = ""
+    ai_cli_model: str = ""  # optional --model override for the CLI; empty = the CLI's default
     ai_base_url: str = ""
     ai_api_key: str = ""
     ai_model: str = "gpt-4o-mini"
@@ -29,7 +43,7 @@ class Settings(BaseSettings):
     # How long an invite link stays valid.
     invite_ttl_hours: int = 168  # 7 days
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_REPO_ROOT_ENV, extra="ignore")
 
 
 @lru_cache
