@@ -19,8 +19,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { itemOwner, loadBlocks, type BlockRow } from "../../lib/blocks/serialize";
 import { clearDraft, draftKey, readDraft, writeDraft } from "../../lib/drafts";
 import { deleteItem, parseProperties, patchItem, type Column, type ItemRow } from "../../lib/items/mutations";
+import { usePresence } from "../../lib/presence/use-presence";
 import { Spinner } from "../ui/spinner";
 import { CommentSection } from "../comments/comment-section";
+import { PresenceBar } from "../presence/presence-bar";
 import { BlockEditor, type SaveState } from "../editor/block-editor";
 import { AssigneePicker } from "./views/assignee-picker";
 import { DuePicker } from "./views/due-picker";
@@ -46,6 +48,7 @@ export function ItemDetail({ row, columns, workspaceId, onClose, onDeleted }: It
   // A stashed title only exists if the last session was torn down before the write landed.
   const [title, setTitle] = useState(() => readDraft<string>(titleDraftKey(rowId)) ?? props.title);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const others = usePresence(row.workspace_id, { kind: "item", id: rowId });
 
   /*
    * The title used to commit on blur ALONE, which meant reloading or closing the tab while it
@@ -184,6 +187,9 @@ export function ItemDetail({ row, columns, workspaceId, onClose, onDeleted }: It
             data-testid="detail-title"
             className="min-w-0 flex-1 resize-none overflow-hidden bg-transparent text-lg font-semibold leading-snug text-fg outline-none placeholder:text-subtle"
           />
+          {/* Beside the close button: whoever else has this card open. Renders nothing when
+              you're alone, so the header is unchanged in the usual case. */}
+          <PresenceBar others={others} />
           <button
             type="button"
             onClick={onClose}

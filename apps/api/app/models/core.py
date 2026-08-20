@@ -93,6 +93,48 @@ class WorkspaceInvitation(TimestampMixin, Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class Presence(Base):
+    """Who is looking at what, right now — the app's only EPHEMERAL table.
+
+    Deliberately not synced: it is absent from sync-rules.yaml and from `TABLE_MODELS`, and it
+    is written over a plain REST endpoint rather than the upload path. Presence is not content —
+    "Renzy is on this page" is true for a few seconds and then meaningless, so replicating it
+    would push constant churn through every teammate's device for no lasting value.
+
+    UNLOGGED is the belt to that braces, and it is a structural guarantee rather than a
+    convention: the PowerSync publication is `FOR ALL TABLES`, so any new table is published
+    automatically — but an unlogged table writes no WAL, so logical decoding has nothing to
+    replicate and this one *cannot* reach a device even by accident. It also costs no WAL for
+    a row rewritten every few seconds, and losing the whole table on a crash is correct
+    behaviour: everyone reappears on their next heartbeat.
+
+    Rows expire by TTL rather than being reliably deleted, because a closed laptop sends no
+    goodbye. The client sends a best-effort leave on navigation; the TTL is what makes it true.
+
+    No `id`, no timestamps mixin: the invariant that every row carries a client-generated UUID
+    and an `updated_at` is about SYNCED rows, and none of it applies here. The natural key is
+    the person and what they are looking at.
+    """
+
+    __tablename__ = "presence"
+    __table_args__ = (
+        Index("ix_presence_seen_at", "seen_at"),  # the expiry sweep runs on every heartbeat
+        {"prefixes": ["UNLOGGED"]},
+    )
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
+    )
+    # "page:<uuid>" or "item:<uuid>" — what the viewer is looking at. A plain string rather than
+    # a typed FK because presence must not care what kinds of thing exist, and an expired row
+    # pointing at a deleted page is harmless.
+    scope: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class Page(TimestampMixin, Base):
     __tablename__ = "pages"
     __table_args__ = (Index("ix_pages_workspace", "workspace_id"),)

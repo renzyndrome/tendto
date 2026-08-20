@@ -12,8 +12,10 @@ import { loadBlocks, pageOwner, type BlockRow } from "../../lib/blocks/serialize
 import { clearDraft, draftKey, onPageHidden, readDraft, writeDraft } from "../../lib/drafts";
 import { renamePage } from "../../lib/pages";
 import { db } from "../../lib/powersync/client";
+import { usePresence } from "../../lib/presence/use-presence";
 import { useUiStore } from "../../stores/ui";
 import { CommentSection } from "../comments/comment-section";
+import { PresenceBar } from "../presence/presence-bar";
 import { Spinner } from "../ui/spinner";
 import { BlockEditor } from "./block-editor";
 
@@ -87,9 +89,18 @@ function PageEditorInner({
   pageWorkspaceId,
 }: PageEditorInnerProps) {
   const workspaceId = useUiStore((s) => s.activeWorkspaceId);
+  // THIS page's workspace only, with no fallback to the sidebar's: presence is keyed on
+  // (workspace, page), so filing it under the wrong workspace would put you in a room the
+  // page's actual readers are not in. Null (page not in the replica yet) simply means no poll.
+  const others = usePresence(pageWorkspaceId, { kind: "page", id: pageId });
 
   return (
     <div className="mx-auto min-h-full max-w-3xl px-6 py-10">
+      {/* Above the title and right-aligned, so it reads as "about this page" and takes no
+          vertical space when nobody else is here (the usual case: it renders nothing). */}
+      <div className="flex justify-end">
+        <PresenceBar others={others} />
+      </div>
       <PageTitle pageId={pageId} initialTitle={initialTitle} />
       <BlockEditor
         owner={pageOwner(pageId)}

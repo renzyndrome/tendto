@@ -204,6 +204,11 @@ async def seed_comment(
                 author_label=author_label,
                 body=body,
                 authored_at=authored_at or datetime(2026, 8, 20, 9, 0, tzinfo=UTC),
+                # Pinned, not left to server_default=now(): tests then upload edits stamped with
+                # fixed timestamps, and a row whose updated_at is the real clock makes those
+                # edits look stale (and drop, under last-write-wins) depending on the time of
+                # day the suite happens to run.
+                updated_at=datetime(2026, 8, 20, 9, 0, tzinfo=UTC),
             )
         )
         await session.commit()
