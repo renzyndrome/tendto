@@ -171,6 +171,61 @@ class Item(TimestampMixin, Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
+class Comment(TimestampMixin, Base):
+    """A comment on a page or a card — team-visible by design.
+
+    Comments ride the `workspace_content` bucket (every member sees them; that is the point),
+    but each row is additionally AUTHOR-owned: sync.py pins `author_id` to the token subject on
+    create and only lets the author edit — the workspace owner may delete, never edit. Same XOR
+    ownership as Block: a comment belongs to exactly one page or one item, enforced in the
+    database because both columns arrive from a client.
+
+    `author_label` is the author's name-or-email denormalized at write time, because user names
+    live only in better-auth's tables and never sync — without it a comment could not render
+    offline. It is cosmetic and client-supplied; the identity guarantee rides `author_id`.
+
+    `body` is plain text with inline mention tokens `@[<user_id>:<label>]` — no JSONB, no
+    client timestamp columns, so JSON_COLUMNS/DATETIME_COLUMNS in sync.py stay untouched.
+    Mentions render highlighted and nothing more: no notifications, ever (docs/planning/03
+    §guardrails, collaboration noise).
+    """
+
+    __tablename__ = "comments"
+    __table_args__ = (
+        Index("ix_comments_workspace", "workspace_id"),
+        Index("ix_comments_page", "page_id"),
+        Index("ix_comments_item", "item_id"),
+        CheckConstraint(
+            "(page_id IS NOT NULL) <> (item_id IS NOT NULL)",
+            name="ck_comments_exactly_one_owner",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    page_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("pages.id", ondelete="CASCADE"), nullable=True
+    )
+    item_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("items.id", ondelete="CASCADE"), nullable=True
+    )
+    # better-auth user id: String(64), no FK (see memberships.user_id).
+    author_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    author_label: Mapped[str] = mapped_column(String(320), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    # When the comment was WRITTEN, per the device that wrote it — what the thread sorts and
+    # dates by. `created_at` cannot serve: it is reserved, so the server stamps it at UPLOAD
+    # time, and a comment written offline on Monday would read "just now" on Friday and sort
+    # after everything said in between. Same reason `focus_sessions.started_at` exists.
+    authored_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # NULL until the author edits. Explicit rather than derived from updated_at > created_at:
+    # those are two different clocks (the device's and the server's), so their difference means
+    # nothing — it can hide a quick edit and invent one that never happened.
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class FocusSession(TimestampMixin, Base):
     """A COMPLETED Pomodoro work session — the first USER-owned synced table.
 

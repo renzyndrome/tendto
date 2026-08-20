@@ -17,9 +17,18 @@ export async function createCollection(workspaceId: string): Promise<string> {
   return id;
 }
 
-/** Delete a collection and all of its items. */
+/**
+ * Delete a collection, its items, and those items' description blocks. Postgres cascades all of
+ * it from the collection FK; the local replica has no foreign keys, so each level is explicit
+ * (the same reason `deleteItem` spells it out).
+ *
+ * Comments are deliberately left to the server's FK cascade — see `deletePageCascade` in
+ * lib/pages.ts for why deleting a teammate's comment from a parent delete wedges the queue.
+ */
 export async function deleteCollectionCascade(collectionId: string): Promise<void> {
   await db.writeTransaction(async (tx) => {
+    const owned = "SELECT id FROM items WHERE collection_id = ?";
+    await tx.execute(`DELETE FROM blocks WHERE item_id IN (${owned})`, [collectionId]);
     await tx.execute("DELETE FROM items WHERE collection_id = ?", [collectionId]);
     await tx.execute("DELETE FROM collections WHERE id = ?", [collectionId]);
   });

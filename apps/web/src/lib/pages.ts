@@ -41,6 +41,14 @@ export async function renamePage(pageId: string, title: string): Promise<void> {
  * Delete a page and everything under it: all descendant subpages (walked via `parent_id`) and
  * every block of each. `parent_id` isn't a DB foreign key, so the cascade is explicit here; each
  * delete syncs up and Postgres cascades the blocks too.
+ *
+ * COMMENTS ARE DELIBERATELY NOT DELETED HERE. Only a comment's author (or the workspace owner)
+ * may delete it, so an editor removing a page that holds a teammate's comment would queue a
+ * DELETE the server answers with 403 — and because the upload queue is ordered and its
+ * transaction is never completed on error, that would wedge every later write from the device.
+ * The page delete alone is enough: Postgres cascades the comments from the FK, and PowerSync
+ * then removes them from every replica. The rows linger locally only until that round-trip, and
+ * nothing renders them once their page is gone.
  */
 export async function deletePageCascade(pageId: string): Promise<void> {
   const toDelete: string[] = [pageId];

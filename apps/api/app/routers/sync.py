@@ -2,8 +2,9 @@
 
 The PowerSync client's `uploadData()` posts queued CRUD entries here. This endpoint is the
 UPLOAD tenancy boundary (docs/planning/05 §isolation): every entry is authorized before
-anything touches Postgres. Two ownership models — workspace tables check membership + role;
-USER-owned tables check that the row belongs to the token subject. Conflict policy:
+anything touches Postgres. Three ownership models — workspace tables check membership + role;
+USER-owned tables check that the row belongs to the token subject; AUTHOR-owned tables check
+membership and then narrow it to the row's author. Conflict policy:
 last-write-wins at row granularity, with `last_seen_updated_at` used to report
 "updated elsewhere" back to the client.
 
@@ -22,10 +23,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import CurrentUser, get_current_user
+from app.auth_users import emails_for
 from app.db import get_session
 from app.models.core import (
     Block,
     Collection,
+    Comment,
     FocusSession,
     Item,
     Membership,
@@ -45,12 +48,18 @@ TABLE_MODELS = {
     "collections": Collection,
     "items": Item,
     "focus_sessions": FocusSession,
+    "comments": Comment,
 }
 # Tables owned by a USER rather than a workspace: they carry `user_id` instead of
 # `workspace_id`, are authorized against the token subject, and ride the `user_private` sync
 # bucket. Personal data must never go in `workspace_content`, which fans every row out to every
 # member of the workspace. Subset of TABLE_MODELS.
 USER_OWNED_TABLES = {"focus_sessions"}
+# Workspace tables whose rows are ADDITIONALLY owned by their author. Membership is checked as
+# usual, then `_assert_comment_author` narrows it: only the author may edit their own row, and
+# only a workspace owner may delete someone else's. Subset of TABLE_MODELS, disjoint from
+# USER_OWNED_TABLES (these rows are team-visible; those are private).
+AUTHOR_OWNED_TABLES = {"comments"}
 # JSONB columns arrive from the client as JSON strings and must be parsed before binding.
 JSON_COLUMNS: dict[str, set[str]] = {
     "blocks": {"content"},
@@ -64,6 +73,7 @@ JSON_COLUMNS: dict[str, set[str]] = {
 # in `_apply_entry` and `created_at` is reserved, so this covers everything else.
 DATETIME_COLUMNS: dict[str, set[str]] = {
     "focus_sessions": {"started_at"},
+    "comments": {"authored_at", "edited_at"},
 }
 # Columns the client is never allowed to drive directly on a write.
 _RESERVED_COLUMNS = {"id", "created_at", "updated_at"}
@@ -119,9 +129,10 @@ def _row_values(table: str, data: dict[str, Any]) -> dict[str, Any]:
 class OwnerPin(NamedTuple):
     """The authoritative owner of a row: which column pins it, and to what value.
 
-    Workspace tables pin `workspace_id`; user-owned tables pin `user_id`. Pinning is what stops
-    a client that merely knows a row's id from relocating that row to another owner — the apply
-    step overwrites the column with this value rather than trusting the client's copy.
+    Workspace tables pin `workspace_id`; user-owned tables pin `user_id`; author-owned tables
+    pin both `workspace_id` and `author_id`. Pinning is what stops a client that merely knows a
+    row's id from relocating that row to another owner — the apply step overwrites the column
+    with this value rather than trusting the client's copy.
     """
 
     column: str
@@ -152,7 +163,7 @@ async def _resolve_workspace_id(session: AsyncSession, entry: CrudEntry) -> Any 
 
 async def _assert_owns_row(
     session: AsyncSession, user: CurrentUser, entry: CrudEntry
-) -> OwnerPin | None:
+) -> list[OwnerPin]:
     """Authorize a USER-owned row against the token subject — no membership involved.
 
     Same shape as the workspace path: for an EXISTING row the *stored* user_id is
@@ -165,17 +176,70 @@ async def _assert_owns_row(
     if stored_user_id is not None:
         if stored_user_id != user.id:
             raise HTTPException(status_code=403, detail="Not your row")
-        return OwnerPin("user_id", stored_user_id)
+        return [OwnerPin("user_id", stored_user_id)]
     if entry.op is Op.DELETE:
-        return None  # idempotent no-op: the row is gone, nothing left to authorize against
-    return OwnerPin("user_id", user.id)
+        return []  # idempotent no-op: the row is gone, nothing left to authorize against
+    return [OwnerPin("user_id", user.id)]
+
+
+async def _label(session: AsyncSession, user: CurrentUser) -> str:
+    """The display name to stamp on a new comment, resolved from better-auth.
+
+    Denormalized because better-auth's `user` table never syncs, so a device with only the
+    membership rows cannot turn an id into a name. Resolved SERVER-side rather than trusted from
+    the client: the label is the only identity a reader ever sees, so accepting the client's copy
+    would let a member post under a teammate's name — the one place in the app where an
+    impersonation would actually be believed.
+
+    Falls back to the token subject's id, never to the client's value: an opaque id is at least
+    true. Truncated to the column width so an unbounded display name cannot 500 the upload and
+    wedge the device's ordered queue.
+    """
+    profile = (await emails_for(session, [user.id])).get(user.id, {})
+    label = (profile.get("name") or "").strip() or profile.get("email") or user.id
+    return label[:320]
+
+
+async def _assert_comment_author(
+    session: AsyncSession, user: CurrentUser, entry: CrudEntry, role: str
+) -> list[OwnerPin]:
+    """Narrow a workspace write to the row's AUTHOR (membership was already checked).
+
+    Being an editor of the workspace is not enough to speak in someone else's name: for an
+    EXISTING row the *stored* author_id decides, so only the author may PUT/PATCH it. A
+    workspace owner may DELETE another member's comment (moderation) but never edit one —
+    editing would put words in their mouth, which no role should permit.
+
+    For a brand-new row the writer is the author by definition, so a client-supplied
+    `author_id` is ignored rather than validated (same reasoning as `_assert_owns_row`).
+    Note this makes a PUT that recreates a deleted id the writer's own comment — harmless,
+    since the previous row is gone.
+    """
+    model = TABLE_MODELS[entry.table]
+    stored = (
+        await session.execute(
+            select(model.author_id, model.author_label).where(model.id == entry.id)
+        )
+    ).first()
+    if stored is None:
+        # No stored row: a create (pin the author), or a replayed delete of a gone row.
+        return [
+            OwnerPin("author_id", user.id),
+            OwnerPin("author_label", await _label(session, user)),
+        ]
+    stored_author_id, stored_label = stored
+    # The label is pinned to the STORED one on every later write, so an edit cannot rename the
+    # author either — and a moderating owner's DELETE carries the original through untouched.
+    if stored_author_id == user.id or (entry.op is Op.DELETE and role == "owner"):
+        return [OwnerPin("author_id", stored_author_id), OwnerPin("author_label", stored_label)]
+    raise HTTPException(status_code=403, detail="Only the author can modify this comment")
 
 
 async def _assert_can_write(
     session: AsyncSession, user: CurrentUser, entry: CrudEntry
-) -> OwnerPin | None:
-    """Authorize one entry, or raise 403. Returns the authoritative owner so the apply step can
-    pin the row to it.
+) -> list[OwnerPin]:
+    """Authorize one entry, or raise 403. Returns the authoritative owner columns so the apply
+    step can pin the row to them.
 
     Workspace tables require the user to be an owner/editor of the target workspace. Workspaces
     + memberships are provisioned by POST /bootstrap, so a legitimate writer is already a
@@ -183,6 +247,9 @@ async def _assert_can_write(
 
     USER-owned tables branch out first: they have no `workspace_id` at all, so the membership
     check cannot apply — and `_resolve_workspace_id` would fail on the missing column.
+
+    AUTHOR-owned tables are workspace tables with a second pin: membership gets you into the
+    workspace, authorship decides what you may do to a given row.
     """
     if entry.table in USER_OWNED_TABLES:
         return await _assert_owns_row(session, user, entry)
@@ -192,7 +259,7 @@ async def _assert_can_write(
         # with nothing to authorize against. Anything else with no resolvable workspace is
         # a malformed write.
         if entry.op is Op.DELETE:
-            return None
+            return []
         raise HTTPException(status_code=403, detail="Cannot determine target workspace")
     role = await session.scalar(
         select(Membership.role).where(
@@ -202,16 +269,19 @@ async def _assert_can_write(
     )
     if role not in WRITE_ROLES:
         raise HTTPException(status_code=403, detail="No write access to this workspace")
-    return OwnerPin("workspace_id", workspace_id)
+    pins = [OwnerPin("workspace_id", workspace_id)]
+    if entry.table in AUTHOR_OWNED_TABLES:
+        pins += await _assert_comment_author(session, user, entry, role)
+    return pins
 
 
 # --- apply ------------------------------------------------------------------------------
 
 
-async def _apply_entry(session: AsyncSession, entry: CrudEntry, owner: OwnerPin | None) -> bool:
-    """Apply one entry idempotently, last-write-wins at row granularity. `owner` is the
-    authoritative owner resolved during the permission check (the stored value for an existing
-    row), which this step pins onto the row.
+async def _apply_entry(session: AsyncSession, entry: CrudEntry, owners: list[OwnerPin]) -> bool:
+    """Apply one entry idempotently, last-write-wins at row granularity. `owners` are the
+    authoritative owner columns resolved during the permission check (the stored values for an
+    existing row), which this step pins onto the row.
 
     Returns whether a conflict was detected — i.e. the server row was already newer than the
     state the client last saw (`last_seen_updated_at`). The conflict flag is reported to the
@@ -239,12 +309,14 @@ async def _apply_entry(session: AsyncSession, entry: CrudEntry, owner: OwnerPin 
 
     values = _row_values(entry.table, data)
     values["updated_at"] = incoming
-    # Pin the owner column to the authoritative value: for a new row that's the (authorized)
+    # Pin each owner column to the authoritative value: for a new row that's the (authorized)
     # target; for an existing row it's the *stored* owner, so a write can never relocate a row
-    # to another tenant or another user even if the client supplies a foreign one. The column
-    # check keeps `workspaces` behaving as before — it pins by row id and has no such column.
-    if owner is not None and owner.column in table.c:
-        values[owner.column] = owner.value
+    # to another tenant, another user, or another author even if the client supplies a foreign
+    # one. The column check keeps `workspaces` behaving as before — it pins by row id and has
+    # no such column.
+    for owner in owners:
+        if owner.column in table.c:
+            values[owner.column] = owner.value
 
     if entry.op is Op.PUT:
         stmt = pg_insert(table).values(id=entry.id, **values)
@@ -273,8 +345,8 @@ async def upload(
     for entry in batch.entries:
         if entry.table not in TABLE_MODELS:
             raise HTTPException(status_code=400, detail=f"Unknown table: {entry.table}")
-        owner = await _assert_can_write(session, user, entry)
-        if await _apply_entry(session, entry, owner):
+        owners = await _assert_can_write(session, user, entry)
+        if await _apply_entry(session, entry, owners):
             conflicts.append(entry.id)
     await session.commit()
     return UploadResult(applied=len(batch.entries) - len(conflicts), conflicts=conflicts)

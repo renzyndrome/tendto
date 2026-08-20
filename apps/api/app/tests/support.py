@@ -14,7 +14,15 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.config import get_settings
-from app.models.core import FocusSession, Membership, Page, Workspace
+from app.models.core import (
+    Collection,
+    Comment,
+    FocusSession,
+    Item,
+    Membership,
+    Page,
+    Workspace,
+)
 
 # The suite TRUNCATES every table before each test (see conftest._prepare_db), so it must never
 # point at a database anyone cares about. It used to default to DATABASE_URL — the dev database
@@ -134,6 +142,72 @@ async def seed_page(*, workspace_id: UUID, page_id: UUID | None = None, title: s
         session.add(Page(id=page_id, workspace_id=workspace_id, title=title, position=0))
         await session.commit()
     return page_id
+
+
+async def seed_collection(
+    *, workspace_id: UUID, collection_id: UUID | None = None, name: str = "C"
+) -> UUID:
+    collection_id = collection_id or uuid4()
+    async with TestSession() as session:
+        session.add(Collection(id=collection_id, workspace_id=workspace_id, name=name))
+        await session.commit()
+    return collection_id
+
+
+async def seed_item(
+    *,
+    workspace_id: UUID,
+    collection_id: UUID | None = None,
+    item_id: UUID | None = None,
+    title: str = "Card",
+) -> UUID:
+    """Insert an item, creating its collection when one isn't supplied (items.collection_id is
+    a real FK, so a bare item would violate it)."""
+    if collection_id is None:
+        collection_id = await seed_collection(workspace_id=workspace_id)
+    item_id = item_id or uuid4()
+    async with TestSession() as session:
+        session.add(
+            Item(
+                id=item_id,
+                workspace_id=workspace_id,
+                collection_id=collection_id,
+                properties={"title": title},
+                position=0,
+            )
+        )
+        await session.commit()
+    return item_id
+
+
+async def seed_comment(
+    *,
+    workspace_id: UUID,
+    author_id: str,
+    page_id: UUID | None = None,
+    item_id: UUID | None = None,
+    comment_id: UUID | None = None,
+    body: str = "hello",
+    author_label: str = "test@example.com",
+    authored_at: datetime | None = None,
+) -> UUID:
+    """Insert a comment directly. Exactly one of page_id/item_id — the DB enforces the XOR."""
+    comment_id = comment_id or uuid4()
+    async with TestSession() as session:
+        session.add(
+            Comment(
+                id=comment_id,
+                workspace_id=workspace_id,
+                page_id=page_id,
+                item_id=item_id,
+                author_id=author_id,
+                author_label=author_label,
+                body=body,
+                authored_at=authored_at or datetime(2026, 8, 20, 9, 0, tzinfo=UTC),
+            )
+        )
+        await session.commit()
+    return comment_id
 
 
 async def seed_focus_session(

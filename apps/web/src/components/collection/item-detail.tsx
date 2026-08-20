@@ -2,11 +2,14 @@
  * Item detail — the dialog you get by clicking a card.
  *
  * Deliberately NOT a Trello card. It carries the title, a rich description (the field items
- * previously had nowhere to put), and the fields that already existed but were cramped into an
- * 18rem card: status, due date + optional time, assignee. No labels, no per-card checklists, no
- * attachments, no activity feed — see docs/planning/03-roadmap.md §guardrails, and note that a
- * checklist inside a card would fork the "same data, many views" primitive that collections are
- * built on (sub-tasks belong in the collection, where every view can see them).
+ * previously had nowhere to put), the fields that already existed but were cramped into an 18rem
+ * card (status, due date + optional time, assignee), and a comment thread. No labels, no per-card
+ * checklists, no attachments, and no activity feed — see docs/planning/03-roadmap.md §guardrails,
+ * and note that a checklist inside a card would fork the "same data, many views" primitive that
+ * collections are built on (sub-tasks belong in the collection, where every view can see them).
+ *
+ * Comments are people talking, which is not the "activity feed" the guardrail rules out: nobody
+ * is told what anyone else did — you read the thread when you open the card.
  *
  * The description reuses the page editor's BlockEditor, so a card body is the same primitive as
  * a page body — same blocks, same paste handling, same inline images.
@@ -17,6 +20,7 @@ import { itemOwner, loadBlocks, type BlockRow } from "../../lib/blocks/serialize
 import { clearDraft, draftKey, readDraft, writeDraft } from "../../lib/drafts";
 import { deleteItem, parseProperties, patchItem, type Column, type ItemRow } from "../../lib/items/mutations";
 import { Spinner } from "../ui/spinner";
+import { CommentSection } from "../comments/comment-section";
 import { BlockEditor, type SaveState } from "../editor/block-editor";
 import { AssigneePicker } from "./views/assignee-picker";
 import { DuePicker } from "./views/due-picker";
@@ -132,9 +136,12 @@ export function ItemDetail({ row, columns, workspaceId, onClose, onDeleted }: It
     function onKey(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
       // Escape belongs to the innermost thing that's open. The editor's slash/emoji menu and
-      // link toolbar render in a portal outside this dialog, so without this check dismissing
-      // the slash menu would close the whole card and lose the user's place mid-edit.
-      if (document.querySelector(".bn-suggestion-menu, .bn-link-toolbar")) return;
+      // link toolbar render in a portal outside this dialog, and the comment box's @mention
+      // picker is another such layer — without this check dismissing one of them would close
+      // the whole card and lose the user's place mid-edit.
+      if (document.querySelector(".bn-suggestion-menu, .bn-link-toolbar, [data-mention-menu]")) {
+        return;
+      }
       onClose();
     }
     document.addEventListener("keydown", onKey);
@@ -254,6 +261,15 @@ export function ItemDetail({ row, columns, workspaceId, onClose, onDeleted }: It
                 />
               </div>
             )}
+          </div>
+
+          {/* Inside the scroll body, so the thread scrolls with the card rather than fighting
+              the footer for space. */}
+          <div className="border-t border-line px-5 py-4">
+            {/* The CARD's workspace, not the active one: they are the same today, but pinning a
+                comment to a workspace its card doesn't live in would hide it from the people
+                looking at that card. */}
+            <CommentSection owner={{ kind: "item", id: row.id }} workspaceId={row.workspace_id} />
           </div>
         </div>
 

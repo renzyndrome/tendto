@@ -21,6 +21,10 @@ bucket_definitions:
       - SELECT * FROM blocks WHERE workspace_id = bucket.workspace_id
       - SELECT * FROM collections WHERE workspace_id = bucket.workspace_id
       - SELECT * FROM items WHERE workspace_id = bucket.workspace_id
+      # Comments are team-visible on purpose — that is what a comment is for. Each row is
+      # additionally author-owned, but that is an UPLOAD rule (sync.py); everyone in the
+      # workspace reads them.
+      - SELECT * FROM comments WHERE workspace_id = bucket.workspace_id
 
   # One bucket per USER, holding only that user's own rows. Everything here is PRIVATE by
   # construction and must never ALSO appear in `workspace_content` above, which fans every row
