@@ -17,6 +17,12 @@ tenancy boundary (upload half = FastAPI permission checks). Treat edits as secur
   query reads no table). Holds rows that belong to a person rather than a workspace —
   `focus_sessions` today.
 
+**Bucket ≠ permission.** A row in `workspace_content` reaches every member, but that says
+nothing about who may *write* it. `comments` are the case in point: everyone reads the thread,
+yet only the author may edit their own comment. That narrowing lives entirely in the upload path
+(`AUTHOR_OWNED_TABLES` in sync.py), never in the rules — do not reach for a new bucket to express
+a write rule.
+
 ## Adding a synced table
 
 **Step 0 — which bucket?** This is a one-way door: once a row reaches a teammate's device it is
@@ -37,7 +43,9 @@ Then:
    (see `db-migration` skill).
 3. Add it to `TABLE_MODELS` in `apps/api/app/routers/sync.py` — that dict is the upload
    **allowlist**, so a table missing from it is rejected with a 400. A user-owned table also
-   goes in `USER_OWNED_TABLES`, which authorizes by owner instead of by membership.
+   goes in `USER_OWNED_TABLES`, which authorizes by owner instead of by membership; a
+   workspace table whose rows belong to one person (a comment) goes in `AUTHOR_OWNED_TABLES`,
+   which keeps the membership check and adds a per-row author check on top.
 4. A client-supplied timestamp column must be listed in `DATETIME_COLUMNS` (same file): the
    upload path binds client values raw and asyncpg refuses an ISO string for `timestamptz`.
    The resulting 500 wedges that device's upload queue permanently.

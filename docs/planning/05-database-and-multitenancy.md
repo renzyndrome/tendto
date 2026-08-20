@@ -69,6 +69,17 @@ Entities: `users`, `organizations`, `workspaces`, `memberships`, `pages`, `block
 >   FastAPI gained the matching upload rule: user-owned tables authorize against the token
 >   subject rather than `memberships`. The three isolation layers are unchanged in spirit — this
 >   adds a second *tenant key*, not a second model.
+> - **A third ownership shape: AUTHOR-owned rows inside a workspace bucket (`comments`,
+>   2026-08-20).** The two shapes above are about *which bucket a row rides* — who receives it.
+>   Comments raise the other question: everyone in the workspace should read the thread, but not
+>   everyone should be able to rewrite a given line of it. So the download side is unchanged
+>   (plain `workspace_content`, keyed on `workspace_id`) while the upload side narrows: after the
+>   usual membership + role check, `sync.py` compares the row's **stored** `author_id` against the
+>   token subject. Only the author may edit; a workspace owner may delete another member's comment
+>   but never edit one. `author_id` is *pinned* on create exactly as `workspace_id` is, so a
+>   client cannot post in someone else's name. The lesson worth keeping: **the bucket answers who
+>   reads, the upload path answers who writes** — reaching for a new bucket to express a write
+>   rule would have leaked the feature into the tenancy model.
 > - **A block belongs to exactly one owner: a page *or* an item.** `blocks.page_id` became
 >   nullable, `blocks.item_id` was added, and a CHECK enforces the XOR in the database (both
 >   columns arrive from a client). A card's description is therefore the same primitive as a

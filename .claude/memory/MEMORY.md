@@ -17,4 +17,5 @@ One line per memory. Full content in the linked files; keep this index lean.
 - [AI engines](ai-engines.md) — CLI (claude/codex) vs API vs fallback; why CLI is dev-only, the stdin/scratch-dir containment, and the e2e no-engine contract
 - [Focus gamification](focus-gamification.md) — reflective stats + a garden that never punishes; the first user-private sync bucket, and the timestamp bind that wedges upload queues
 - [Pomodoro phases](pomodoro-phases.md) — why the timer stops between phases (Auto is opt-in), and the StrictMode double-fire that skipped a whole phase
+- [Comments & @mentions](comments-and-mentions.md) — the bucket decides who reads, the upload path who writes; inline mention tokens; why "(edited)" can't be derived from timestamps
 - [Calendar day view](calendar-day-view.md) — items are deadlines not meetings (one-slot blocks, no duration); the all-day row IS "no time"; which Google behaviours were dropped

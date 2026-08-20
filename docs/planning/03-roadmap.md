@@ -104,6 +104,30 @@ Turn it from a notebook into a light workspace — and make it multi-user.
 > **startup task workflow** fields (assignee picked from workspace members, due date + optional
 > time), and **light/dark theming**. Still open in Phase 2: **presence** and
 > **comments/@mentions**.
+>
+> **Status (2026-08-20): comments & @mentions are done.** A flat thread under every page and
+> every card, with `@` picking from the workspace's members. Three decisions are worth carrying
+> forward:
+>
+> 1. **A mention highlights and does nothing else** — no notification, no badge, no inbox. The
+>    collaboration-noise guardrail rules out being told what other people did; seeing your own
+>    name stand out when you open the thread is the entire feature. (Contrast the due-reminder
+>    clarification below: that one is *your own* deadline, which is why it was allowed.)
+> 2. **Tenancy grew a third shape: author-owned rows inside a workspace bucket.** Comments reach
+>    every member (that is what a comment is for), but membership no longer implies the right to
+>    write any row in the table: only the author may edit their own comment, and only a workspace
+>    owner may delete someone else's — never edit it, since that would put words in their mouth.
+>    Enforced in `sync.py` (`AUTHOR_OWNED_TABLES`), not in the client. Commenting itself still
+>    rides the existing write roles, so a **viewer reads but cannot post**; a dedicated
+>    `commenter` role stays a later, deliberate decision (doc 05 §3).
+> 3. **Mentions are inline text tokens** (`@[<user_id>:<label>]`), not a side table of offsets.
+>    Offsets go stale the moment the comment is edited, and the embedded label is what lets a
+>    comment render on a device that has never fetched the member roster — user records live in
+>    better-auth and never sync. The same reasoning gave the row a denormalized `author_label`,
+>    which the server stamps from better-auth rather than trusting the client: it is the only
+>    identity a reader ever sees.
+>
+> Still open in Phase 2: **presence**.
 
 ## Phase 3 — Calendar, the AI summary & polish
 

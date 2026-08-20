@@ -25,6 +25,9 @@ decisions (sync model, stack, TanStack Router-not-Start, no Flutter) without bei
    a table holding one person's data (`focus_sessions`) carries `user_id` instead and rides the
    `user_private` bucket, authorized by owner rather than by membership. Choosing the wrong
    bucket leaks data irreversibly; see the `sync-rules` skill, step 0.
+   **The bucket decides who READS; the upload path decides who WRITES.** A workspace table can
+   still be owned row-by-row: `comments` reaches every member, but only the author may edit one
+   (`AUTHOR_OWNED_TABLES` in sync.py). Never invent a bucket to express a write rule.
 
 ## Stack
 
