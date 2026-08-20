@@ -17,6 +17,14 @@ tenancy boundary (upload half = FastAPI permission checks). Treat edits as secur
   query reads no table). Holds rows that belong to a person rather than a workspace —
   `focus_sessions` today.
 
+**Some tables belong in neither bucket.** `workspace_invitations` (other people's emails and a
+bearer token) and `presence` (who is looking at what, right now) are server-side tables reached
+over plain REST — absent from this file, from the client schema, and from `TABLE_MODELS`.
+Ephemeral state especially: replicating it would push constant churn to every device for
+something that is meaningless in thirty seconds. Note the publication is `FOR ALL TABLES`, so
+this file is the *only* thing keeping such a table off devices — which is why `presence` is also
+UNLOGGED, writing no WAL so it cannot be replicated even if it were listed here by mistake.
+
 **Bucket ≠ permission.** A row in `workspace_content` reaches every member, but that says
 nothing about who may *write* it. `comments` are the case in point: everyone reads the thread,
 yet only the author may edit their own comment. That narrowing lives entirely in the upload path

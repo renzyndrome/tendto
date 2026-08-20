@@ -127,7 +127,27 @@ Turn it from a notebook into a light workspace — and make it multi-user.
 >    which the server stamps from better-auth rather than trusting the client: it is the only
 >    identity a reader ever sees.
 >
-> Still open in Phase 2: **presence**.
+> **Status (2026-08-20): presence is done, and Phase 2 closes with it.**
+>
+> - **Polling, not a WebSocket** — and this is a considered departure from the 2026 default
+>   (managed services all build presence on a socket; Supabase's is a delta-CRDT over Phoenix
+>   Tracker). The industry's own decision rule is "polling when simplicity or infrastructure
+>   constraints matter more than immediacy", and both apply: presence here is a low-stakes
+>   signal, the API is one process with no broker, and the hosting story is boring on purpose
+>   (doc 07). A socket would have bought a few seconds of latency and cost a token in the query
+>   string (browsers cannot set headers on a WS handshake), a hand-rolled `Origin` check (CORS
+>   middleware does not cover WebSocket handshakes), and an in-memory registry that shards
+>   silently the day anyone runs `--workers 2`. If it ever needs to push, Postgres
+>   `LISTEN/NOTIFY` is a backplane we already run.
+> - **The one ephemeral table, and it is UNLOGGED on purpose.** The PowerSync publication is
+>   `FOR ALL TABLES`, so every new table is published automatically — but an unlogged table
+>   writes no WAL, so logical decoding has nothing to replicate and `presence` *cannot* reach a
+>   device even if someone later adds it to the sync rules by mistake. A structural guarantee
+>   rather than a convention, and pinned by a test that reads `pg_class.relpersistence`.
+> - **It renders nothing when you are alone**, which is nearly always. Presence is not a status
+>   panel that happens to be empty; it is absent until a teammate is genuinely on the same page.
+>   Deliberately excluded: a workspace-wide "who's online" list, last-seen, and idle/away —
+>   those report on *people* rather than on the page, which is the collaboration noise below.
 
 ## Phase 3 — Calendar, the AI summary & polish
 

@@ -30,15 +30,17 @@ BlockNote traps that cost the most time.
 - **Autosave** everywhere, with a visible state and crash-safe localStorage drafts.
 - **Comments & @mentions** on pages and cards — a synced `comments` table whose rows are
   author-owned inside the workspace bucket ([[comments-and-mentions]]).
+- **Presence** — "who else is reading this", polled, on the app's only UNLOGGED (and therefore
+  unreplicatable) table. **Phase 2 is now closed** ([[presence]]).
 
 ## Deliberately NOT built (don't "fix" these by accident)
 
 - Labels, per-card checklists, attachments, activity feed — see [[reminders-and-card-fields]] for
   why each is out, and `e2e/item-detail.spec.ts` asserts they stay out.
-- **Presence** is the last open Phase-2 feature and needs its own infra pass (an ephemeral
-  channel, not synced rows). Comments/@mentions shipped 2026-08-20 — see
-  [[comments-and-mentions]].
 - Mention notifications of any kind: a mention highlights and nothing more, deliberately.
+- A workspace-wide "who's online" list, last-seen, or idle/away status — presence shows only who
+  is on the page you are on, and nothing at all when you're alone ([[presence]]).
+- A WebSocket layer. Presence polls on purpose; see [[presence]] before "upgrading" it.
 - Object storage: images are still inline data URLs capped at 5 MB.
 
 ## Open items
