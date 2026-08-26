@@ -14,7 +14,7 @@ One line per memory. Full content in the linked files; keep this index lean.
 - [Theming](theming.md) — semantic colour tokens (never name a shade, never `dark:`); BlockNote must be handed our resolved theme or it follows the OS on its own
 - [Workspace creation](workspace-creation.md) — why it needs POST /workspaces instead of a local write; the concurrent-/bootstrap race that produced duplicate "My Workspace" rows
 - [Reminders & card fields](reminders-and-card-fields.md) — due date+optional time format, assignee picker, and why due reminders are device-local, coalesced and opt-in
-- [AI engines](ai-engines.md) — CLI (claude/codex) vs API vs fallback; why CLI is dev-only, the stdin/scratch-dir containment, and the e2e no-engine contract
+- [AI engines](ai-engines.md) — CLI (claude/codex) vs API vs fallback; why CLI is dev-only; the interactive tier, and why BlockNote's AI extension is unusable (GPL/paid)
 - [Focus gamification](focus-gamification.md) — reflective stats + a garden that never punishes; the first user-private sync bucket, and the timestamp bind that wedges upload queues
 - [Pomodoro phases](pomodoro-phases.md) — why the timer stops between phases (Auto is opt-in), and the StrictMode double-fire that skipped a whole phase
 - [Presence](presence.md) — why polling beat a WebSocket here; UNLOGGED as a structural "this can never sync"; renders nothing when you're alone

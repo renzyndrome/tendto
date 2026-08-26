@@ -189,6 +189,18 @@ daily recap each evening.
 > not about which sidebar you last clicked. No sync-rule or schema change was needed — sync rules
 > already bucket one per membership, so the data was on the device already. The tenancy boundary
 > is untouched: you still only ever read workspaces you're a member of.
+>
+> **Status (2026-08-21): the interactive AI tier landed** — per-page **Summarize** and inline
+> **Ask AI** (improve / shorten / fix) on page bodies. Both are user-triggered only, so the
+> "the only ambient AI is the daily summary" guardrail is intact. Two notes worth carrying:
+>
+> - **BlockNote's own AI extension could not be used.** `@blocknote/xl-ai` is GPL-3.0 or a paid
+>   commercial licence, and a web app distributes its JavaScript to every visitor — copyleft
+>   would reach the whole frontend. Hand-rolled on the free core APIs instead; doc 06's
+>   recommendation is marked withdrawn. The same applies to BlockNote's PDF/DOCX **exporters**,
+>   which doc 01 will want eventually.
+> - **Nothing is written until you press Keep**, and with no engine configured the buttons do
+>   not exist at all — this is the first feature with no offline story, unlike the recap.
 
 ## Phase 4 — Native shells & earned nice-to-haves
 
