@@ -75,6 +75,27 @@ an **offline/local AI option** Notion structurally can't match. All facts curren
 >   single delta, so the client has one code path. The CLI needs
 >   `--output-format stream-json --include-partial-messages --verbose` — stream-json *alone*
 >   emits the reply as one event and buys nothing.
+>
+> **Status (2026-08-21): the recap became ambient — and the scheduler is on the DEVICE.**
+>
+> The plan above says "a scheduled FastAPI job runs each evening per user". That is amended:
+> the evening delivery is a device-local watcher (`apps/web/src/lib/recap-schedule.ts`),
+> defaulting to 9pm and configurable on the recap page. Three reasons, and each would have to be
+> answered before a server cron makes sense again:
+>
+> 1. **The server never learns anyone's timezone.** It is why `focus_sessions.local_date` is a
+>    wall-clock string. "9pm" is meaningless server-side without storing a timezone per user.
+> 2. **There is nothing to deliver with.** Email is provider-agnostic but unconfigured
+>    (`EMAIL_API_KEY` empty), so a nightly job's "delivery" would be a log line.
+> 3. **It would spend inference for every account every night**, whether or not anyone ever
+>    opened the app — and on the CLI engine that is the operator's own subscription.
+>
+> It also matches the guardrail clarification in doc 03: reminders here are device-local, with
+> no server job and no push channel. The honest limitation is that a machine asleep at 9pm gets
+> nothing; the recap page is always there, and a notification about yesterday at breakfast is
+> noise. `app/ai/jobs.py` (a scaffold whose TODO now pointed at the wrong design) was deleted
+> rather than left to mislead. **Revisit a server-side job when email is real** — it needs a
+> stored per-user timezone.
 
 ## Notion AI in 2026 — the benchmark (what to adopt, what to skip)
 

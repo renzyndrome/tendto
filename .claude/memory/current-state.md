@@ -32,8 +32,10 @@ BlockNote traps that cost the most time.
   author-owned inside the workspace bucket ([[comments-and-mentions]]).
 - **Presence** — "who else is reading this", polled, on the app's only UNLOGGED (and therefore
   unreplicatable) table. **Phase 2 is now closed** ([[presence]]).
-- **Interactive AI** — Summarize a page, Ask AI on a selection. Hand-rolled, because
+- **Interactive AI** — Summarize a page, Ask AI on a selection, streamed. Hand-rolled, because
   BlockNote's AI extension is GPL-3.0-or-paid ([[ai-engines]]).
+- **The evening recap is ambient** — a device-local watcher delivers it at a configurable hour
+  (default 9pm). Deliberately NOT a server cron ([[ai-engines]]).
 
 ## Deliberately NOT built (don't "fix" these by accident)
 
@@ -64,8 +66,8 @@ BlockNote traps that cost the most time.
 
 ## Verifying a change
 
-`make dev` (stack + Vite), `make test` (130 API tests + web typecheck), and
-`make e2e` / `cd apps/web && npx playwright test` (87 e2e). `offline.spec.ts` is occasionally flaky under
+`make dev` (stack + Vite), `make test` (143 API tests + web typecheck), and
+`make e2e` / `cd apps/web && npx playwright test` (94 e2e). `offline.spec.ts` is occasionally flaky under
 load — it is a real cross-device sync timeout, passes on retry, and is unrelated to recent work.
 
 **One-shot tests hide bugs in this codebase.** The autosave defect survived a long time because

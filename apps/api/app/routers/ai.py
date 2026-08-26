@@ -2,8 +2,13 @@
 
 Two tiers, and the split is the whole reason "more AI" does not mean "more clutter":
 
-- AMBIENT: the daily summary. Runs by itself (the scheduled half lives in app/ai/jobs.py);
-  `/daily-summary` here is its user-triggered entry point.
+- AMBIENT: the daily summary. `/daily-summary` serves both halves — the recap page when you
+  open it, and the evening delivery, which is scheduled ON THE DEVICE
+  (apps/web/src/lib/recap-schedule.ts) rather than by a server cron. The server never learns
+  anyone's timezone (that is why `local_date` is a wall-clock string), email is unconfigured so
+  a delivery job would have nothing to deliver with, and a nightly server pass would spend
+  inference for every account whether or not anyone ever looked. A server-side job becomes
+  worth revisiting once email is real — it would need a stored per-user timezone.
 - INTERACTIVE: `/compose` — summarize a page, or rewrite a selection. Fires only when someone
   presses a button, on text they chose. Nothing here ever runs on its own.
 

@@ -222,3 +222,39 @@ CLI path is dev/self-host only.
   straddles delta boundaries. Tested.
 - `X-Accel-Buffering: no`, or nginx holds the whole stream until it finishes and silently undoes
   the feature.
+
+
+## The evening recap is scheduled on the DEVICE (2026-08-21)
+
+The ambient half of the daily summary now fires by itself: at a configurable hour (default
+21:00) the open app fetches today's recap once and raises one desktop notification. Clicking it
+opens `/recap`.
+
+**Doc 06 said "a scheduled FastAPI job" and that is amended, for three reasons a future server
+cron would have to answer first:**
+1. The server never learns a user's timezone — that is exactly why `local_date` is a wall-clock
+   string. "9pm" has no server-side meaning without storing one.
+2. Nothing to deliver with: `EMAIL_API_KEY` is empty, so a nightly job's delivery is a log line.
+3. It would spend inference for every account every night whether or not anyone looked — the
+   operator's own subscription, on the CLI engine.
+
+It also matches the doc-03 guardrail: reminders are device-local, no server job, no push channel.
+`app/ai/jobs.py` was **deleted** — a scaffold whose TODO pointed at the design we rejected is
+worse than no scaffold. Revisit when email is real; it needs a per-user timezone column.
+
+**Details worth keeping:**
+- **The day is marked delivered BEFORE the fetch.** A failure that left it unmarked would retry
+  every minute until midnight — a bad night for the subscription. One attempt per day; the recap
+  page is one click away.
+- **The notification body is built from the STRUCTURED digest**, never the prose, so it reads
+  correctly with no engine configured ("2 done · 50m focused · 1 overdue").
+- **Passes are coalesced** on an in-flight promise, exactly as the due watcher does: interval,
+  focus and visibility listeners all fire within milliseconds, and two overlapping passes would
+  each read "not delivered" and bill two AI calls for one evening.
+- **Polling, not a single timeout at 21:00** — a laptop asleep at nine never fires a timeout, and
+  background timers are throttled. Re-checking on focus/visibility is what makes "opened the lid
+  at 10pm" work.
+- **Settings are per device**, matching the notifications toggle, which is deliberately
+  per-device too. The thing being configured is what THIS machine does at 9pm.
+- **The control lives on `/recap`**, not in a settings dialog: there is no user-settings panel,
+  and that page is where someone thinks "I'd like this every evening".

@@ -19,6 +19,7 @@ import { useEffect, useState } from "react";
 import { apiFetch } from "../../lib/api/client";
 import { toDateKey } from "../../lib/calendar";
 import { formatMinutes } from "../../lib/focus/stats";
+import { RecapScheduleControl } from "./recap-schedule-control";
 import {
   PERIODS,
   periodLabel,
@@ -151,6 +152,7 @@ export function DailyRecap({ anchorKey, period }: { anchorKey: string; period: P
             </div>
           ) : null}
         </div>
+        <RecapScheduleControl />
       </header>
 
       {recap.status === "loading" ? (

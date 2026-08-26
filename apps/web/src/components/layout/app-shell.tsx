@@ -3,6 +3,8 @@ import { Outlet } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import { startDueWatcher } from "../../lib/items/due-watcher";
+import { startRecapWatcher } from "../../lib/recap-schedule";
+import { router } from "../../routes/router";
 import { useUiStore } from "../../stores/ui";
 import { SearchPalette } from "../search/search-palette";
 import { Sidebar } from "./sidebar";
@@ -14,6 +16,14 @@ export function AppShell() {
   // the store so switching workspaces doesn't restart the timer.
   useEffect(
     () => startDueWatcher(() => useUiStore.getState().activeWorkspaceId),
+    [],
+  );
+
+  // The ambient half of the daily summary: at the configured hour it fetches today's recap
+  // once and notifies. Device-local for the same reasons the due watcher is — see
+  // lib/recap-schedule.ts.
+  useEffect(
+    () => startRecapWatcher(() => void router.navigate({ to: "/recap" })),
     [],
   );
 
