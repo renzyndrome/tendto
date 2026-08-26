@@ -64,9 +64,11 @@ and Phase 3's headliners are in.**
 
 ## Open items
 
-- **`apps/web/pnpm-lock.yaml` is untracked** while `package-lock.json` is tracked and every
-  script uses npm. Pick one; they will drift. *(Raised repeatedly and still undecided — it is
-  Renzy's call, not a bug to fix unasked.)*
+**npm is the package manager**, decided 2026-08-21. A stray `pnpm-lock.yaml` sat untracked for
+weeks; it was deleted. Every path uses npm — Makefile, `scripts/dev-stack.sh`, README, and
+`apps/web/Dockerfile` (so npm is what production builds with). If pnpm is ever wanted it is a
+real migration of all four, not a second lockfile.
+
 - **The e2e suite is Chromium-only** (`playwright.config.ts`), but Renzy uses Firefox daily. A
   Firefox-only rendering bug (its focus outline on `contenteditable`) shipped and was only found
   by driving Firefox by hand. Consider adding a Firefox project, at least a smoke one.
