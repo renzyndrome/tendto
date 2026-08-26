@@ -16,7 +16,7 @@ Full plan: [docs/planning/](./docs/planning/) — start with
 ```
 apps/
   web/    Vite + React 19 + TS SPA (PWA) — BlockNote editor, PowerSync client, TanStack Router
-  api/    FastAPI — the authoritative write path (sync upload), permissions, scheduled jobs
+  api/    FastAPI — the authoritative write path (sync upload), permissions, AI endpoints
   auth/   better-auth on Hono + Bun — sessions, orgs/invites, JWT + JWKS (infra, not product code)
 infra/
   powersync/   sync-rules.yaml + service config
@@ -64,8 +64,8 @@ One Dokploy Compose service from `docker-compose.prod.yml` (Postgres + PowerSync
 ## Testing
 
 ```bash
-make test                          # API tests + web typecheck
-cd apps/web && npx playwright test # end-to-end (boot the stack first: make e2e-stack)
+make test   # API tests (pytest) + web typecheck
+make e2e    # boots the whole stack, then the Playwright suite — the per-feature "done gate"
 ```
 
 `make test` runs against a dedicated `tendto_test` database and **refuses** to target the one in
@@ -87,11 +87,17 @@ cd apps/web && npx playwright test # end-to-end (boot the stack first: make e2e-
   API, or an offline fallback (`AI_CLI` / `AI_API_KEY` in `.env`).
 - **Focus** — a Pomodoro timer that waits for you between phases, with a garden, a consistency
   heatmap and your peak hours built from synced session history.
+- **Comments & @mentions** on pages and cards. A mention highlights and does nothing else — no
+  notification, no inbox.
+- **Presence** — who else is reading the page you are on, and nothing at all when you are alone.
+- **Interactive AI** — per-page Summarize and inline Ask AI (improve / shorten / fix), streamed
+  as it is written. Nothing touches the document until you press Keep.
+- **The recap is ambient** — it arrives each evening at a time you choose (9pm by default).
 - Plus light/dark theming and opt-in due/Pomodoro reminders.
 
-Still open: presence, comments/@mentions, RLS hardening, pgvector semantic search, Stripe, and
-the scheduled delivery of the daily summary — each needs live services or its own infra pass.
-Native shells (Phase 4) are untouched by design.
+**Phase 2 is closed.** Still open: RLS hardening, pgvector semantic search, SQLite FTS (search
+is a LIKE match today), Stripe, and the backup/restore drill — each needs live services or its
+own infra pass. Native shells (Phase 4) are untouched by design.
 
 > Running build state, open engineering items and the traps worth knowing before you touch the
 > editor or sync live in [`.claude/memory/`](./.claude/memory/) — start with `current-state.md`.

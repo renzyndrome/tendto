@@ -78,6 +78,26 @@ const items = new Table(
   { indexes: { by_collection: ["collection_id"] } },
 );
 
+// A comment belongs to exactly one owner — a page or a card — the same XOR as blocks. `body` is
+// plain text carrying inline `@[<user_id>:<label>]` mention tokens, and `author_label` is the
+// author's display name denormalized at write time: user records live in better-auth and never
+// sync, so without it a comment could not render offline.
+const comments = new Table(
+  {
+    workspace_id: column.text,
+    page_id: column.text, // null for card comments
+    item_id: column.text, // null for page comments
+    author_id: column.text,
+    author_label: column.text,
+    body: column.text,
+    authored_at: column.text, // ISO timestamp from the writing device — what the thread sorts by
+    edited_at: column.text, // ISO timestamp, null until the author edits
+    created_at: column.text,
+    updated_at: column.text,
+  },
+  { indexes: { by_page: ["page_id"], by_item: ["item_id"] } },
+);
+
 // Focus sessions are USER-private, not workspace content: they ride their own user-scoped
 // bucket (`user_private` in sync-rules.yaml), so there is deliberately no workspace_id here.
 const focusSessions = new Table(
@@ -99,6 +119,7 @@ export const AppSchema = new Schema({
   blocks,
   collections,
   items,
+  comments,
   // Explicit key: Schema names each table from its object key, and the server table is
   // snake_case while the local const follows the file's camelCase convention.
   focus_sessions: focusSessions,

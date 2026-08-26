@@ -144,7 +144,11 @@ export function CollectionView({ collectionId, openItemId }: CollectionViewProps
       </div>
 
       {openItemId && openRow ? (
+        // key: going card → card navigates without unmounting, so state initialised from the
+        // row (the title draft) and anything scoped to the card (its presence) would carry
+        // over from the previous one for a beat.
         <ItemDetail
+          key={openItemId}
           row={openRow}
           columns={columns}
           workspaceId={workspaceId}

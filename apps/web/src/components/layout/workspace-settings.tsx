@@ -23,6 +23,7 @@ import {
   ROLE_HINTS,
   ROLE_LABELS,
 } from "../../lib/members";
+import { invalidateMentionRoster } from "../../lib/comments/mention-roster";
 import { invalidateAssignees } from "../../lib/items/assignees";
 import { renameWorkspace } from "../../lib/workspaces";
 
@@ -222,8 +223,10 @@ function MembersSection({
     setError(null);
     try {
       await action();
-      // Assignee pickers cache the member list per workspace — drop it so they refresh.
+      // Assignee pickers and the @mention roster cache the member list per workspace — drop
+      // both so a new teammate is immediately assignable and mentionable.
       invalidateAssignees(workspaceId);
+      invalidateMentionRoster(workspaceId);
       await onChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");

@@ -104,6 +104,50 @@ Turn it from a notebook into a light workspace — and make it multi-user.
 > **startup task workflow** fields (assignee picked from workspace members, due date + optional
 > time), and **light/dark theming**. Still open in Phase 2: **presence** and
 > **comments/@mentions**.
+>
+> **Status (2026-08-20): comments & @mentions are done.** A flat thread under every page and
+> every card, with `@` picking from the workspace's members. Three decisions are worth carrying
+> forward:
+>
+> 1. **A mention highlights and does nothing else** — no notification, no badge, no inbox. The
+>    collaboration-noise guardrail rules out being told what other people did; seeing your own
+>    name stand out when you open the thread is the entire feature. (Contrast the due-reminder
+>    clarification below: that one is *your own* deadline, which is why it was allowed.)
+> 2. **Tenancy grew a third shape: author-owned rows inside a workspace bucket.** Comments reach
+>    every member (that is what a comment is for), but membership no longer implies the right to
+>    write any row in the table: only the author may edit their own comment, and only a workspace
+>    owner may delete someone else's — never edit it, since that would put words in their mouth.
+>    Enforced in `sync.py` (`AUTHOR_OWNED_TABLES`), not in the client. Commenting itself still
+>    rides the existing write roles, so a **viewer reads but cannot post**; a dedicated
+>    `commenter` role stays a later, deliberate decision (doc 05 §3).
+> 3. **Mentions are inline text tokens** (`@[<user_id>:<label>]`), not a side table of offsets.
+>    Offsets go stale the moment the comment is edited, and the embedded label is what lets a
+>    comment render on a device that has never fetched the member roster — user records live in
+>    better-auth and never sync. The same reasoning gave the row a denormalized `author_label`,
+>    which the server stamps from better-auth rather than trusting the client: it is the only
+>    identity a reader ever sees.
+>
+> **Status (2026-08-20): presence is done, and Phase 2 closes with it.**
+>
+> - **Polling, not a WebSocket** — and this is a considered departure from the 2026 default
+>   (managed services all build presence on a socket; Supabase's is a delta-CRDT over Phoenix
+>   Tracker). The industry's own decision rule is "polling when simplicity or infrastructure
+>   constraints matter more than immediacy", and both apply: presence here is a low-stakes
+>   signal, the API is one process with no broker, and the hosting story is boring on purpose
+>   (doc 07). A socket would have bought a few seconds of latency and cost a token in the query
+>   string (browsers cannot set headers on a WS handshake), a hand-rolled `Origin` check (CORS
+>   middleware does not cover WebSocket handshakes), and an in-memory registry that shards
+>   silently the day anyone runs `--workers 2`. If it ever needs to push, Postgres
+>   `LISTEN/NOTIFY` is a backplane we already run.
+> - **The one ephemeral table, and it is UNLOGGED on purpose.** The PowerSync publication is
+>   `FOR ALL TABLES`, so every new table is published automatically — but an unlogged table
+>   writes no WAL, so logical decoding has nothing to replicate and `presence` *cannot* reach a
+>   device even if someone later adds it to the sync rules by mistake. A structural guarantee
+>   rather than a convention, and pinned by a test that reads `pg_class.relpersistence`.
+> - **It renders nothing when you are alone**, which is nearly always. Presence is not a status
+>   panel that happens to be empty; it is absent until a teammate is genuinely on the same page.
+>   Deliberately excluded: a workspace-wide "who's online" list, last-seen, and idle/away —
+>   those report on *people* rather than on the page, which is the collaboration noise below.
 
 ## Phase 3 — Calendar, the AI summary & polish
 
@@ -145,6 +189,18 @@ daily recap each evening.
 > not about which sidebar you last clicked. No sync-rule or schema change was needed — sync rules
 > already bucket one per membership, so the data was on the device already. The tenancy boundary
 > is untouched: you still only ever read workspaces you're a member of.
+>
+> **Status (2026-08-21): the interactive AI tier landed** — per-page **Summarize** and inline
+> **Ask AI** (improve / shorten / fix) on page bodies. Both are user-triggered only, so the
+> "the only ambient AI is the daily summary" guardrail is intact. Two notes worth carrying:
+>
+> - **BlockNote's own AI extension could not be used.** `@blocknote/xl-ai` is GPL-3.0 or a paid
+>   commercial licence, and a web app distributes its JavaScript to every visitor — copyleft
+>   would reach the whole frontend. Hand-rolled on the free core APIs instead; doc 06's
+>   recommendation is marked withdrawn. The same applies to BlockNote's PDF/DOCX **exporters**,
+>   which doc 01 will want eventually.
+> - **Nothing is written until you press Keep**, and with no engine configured the buttons do
+>   not exist at all — this is the first feature with no offline story, unlike the recap.
 
 ## Phase 4 — Native shells & earned nice-to-haves
 

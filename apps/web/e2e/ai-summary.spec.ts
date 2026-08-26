@@ -1,13 +1,24 @@
-import { apiPost } from "./helpers/api";
+import { aiEngineConfigured, apiPost } from "./helpers/api";
 import { expect, test } from "./fixtures";
 
 /**
- * Phase 3 — the ambient daily AI summary, at the API level (the UI lives in recap.spec.ts):
- * the authenticated endpoint returns a non-empty summary plus the structured digest. Runs
- * against the offline fallback provider (no AI_API_KEY needed), so it needs no network/model.
+ * Phase 3 — the ambient daily AI summary, at the API level (the UI lives in recap.spec.ts).
+ *
+ * This one deliberately calls the REAL endpoint rather than a stub: its whole value is proving
+ * the deployed stack wires it together — auth, routing, a real Postgres read — which a stub
+ * would fake. So it is guarded instead: with an engine configured it SKIPS, because a live
+ * model is both non-deterministic and billed to the operator. The prompts, the digest and every
+ * failure mode are covered by pytest (app/tests/test_ai.py).
+ *
+ * To exercise it on a machine with AI_CLI set, blank that key and restart the API.
  */
 test.describe("ai daily summary", () => {
   test("POST /ai/daily-summary returns a summary for today", async ({ authedPage: page }) => {
+    test.skip(
+      await aiEngineConfigured(page.request),
+      "an AI engine is configured — skipping so the suite never spends the subscription",
+    );
+
     // Create a little activity so the summary has something to reflect.
     await page.getByRole("button", { name: "New page" }).click();
     await page.waitForTimeout(1500); // let it upload to Postgres

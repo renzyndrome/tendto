@@ -93,6 +93,48 @@ class WorkspaceInvitation(TimestampMixin, Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class Presence(Base):
+    """Who is looking at what, right now — the app's only EPHEMERAL table.
+
+    Deliberately not synced: it is absent from sync-rules.yaml and from `TABLE_MODELS`, and it
+    is written over a plain REST endpoint rather than the upload path. Presence is not content —
+    "Renzy is on this page" is true for a few seconds and then meaningless, so replicating it
+    would push constant churn through every teammate's device for no lasting value.
+
+    UNLOGGED is the belt to that braces, and it is a structural guarantee rather than a
+    convention: the PowerSync publication is `FOR ALL TABLES`, so any new table is published
+    automatically — but an unlogged table writes no WAL, so logical decoding has nothing to
+    replicate and this one *cannot* reach a device even by accident. It also costs no WAL for
+    a row rewritten every few seconds, and losing the whole table on a crash is correct
+    behaviour: everyone reappears on their next heartbeat.
+
+    Rows expire by TTL rather than being reliably deleted, because a closed laptop sends no
+    goodbye. The client sends a best-effort leave on navigation; the TTL is what makes it true.
+
+    No `id`, no timestamps mixin: the invariant that every row carries a client-generated UUID
+    and an `updated_at` is about SYNCED rows, and none of it applies here. The natural key is
+    the person and what they are looking at.
+    """
+
+    __tablename__ = "presence"
+    __table_args__ = (
+        Index("ix_presence_seen_at", "seen_at"),  # the expiry sweep runs on every heartbeat
+        {"prefixes": ["UNLOGGED"]},
+    )
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
+    )
+    # "page:<uuid>" or "item:<uuid>" — what the viewer is looking at. A plain string rather than
+    # a typed FK because presence must not care what kinds of thing exist, and an expired row
+    # pointing at a deleted page is harmless.
+    scope: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class Page(TimestampMixin, Base):
     __tablename__ = "pages"
     __table_args__ = (Index("ix_pages_workspace", "workspace_id"),)
@@ -169,6 +211,61 @@ class Item(TimestampMixin, Base):
     properties: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     # e.g. {"title": "...", "done": false, "status": "todo", "due": "2026-07-10", ...}
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class Comment(TimestampMixin, Base):
+    """A comment on a page or a card — team-visible by design.
+
+    Comments ride the `workspace_content` bucket (every member sees them; that is the point),
+    but each row is additionally AUTHOR-owned: sync.py pins `author_id` to the token subject on
+    create and only lets the author edit — the workspace owner may delete, never edit. Same XOR
+    ownership as Block: a comment belongs to exactly one page or one item, enforced in the
+    database because both columns arrive from a client.
+
+    `author_label` is the author's name-or-email denormalized at write time, because user names
+    live only in better-auth's tables and never sync — without it a comment could not render
+    offline. It is cosmetic and client-supplied; the identity guarantee rides `author_id`.
+
+    `body` is plain text with inline mention tokens `@[<user_id>:<label>]` — no JSONB, no
+    client timestamp columns, so JSON_COLUMNS/DATETIME_COLUMNS in sync.py stay untouched.
+    Mentions render highlighted and nothing more: no notifications, ever (docs/planning/03
+    §guardrails, collaboration noise).
+    """
+
+    __tablename__ = "comments"
+    __table_args__ = (
+        Index("ix_comments_workspace", "workspace_id"),
+        Index("ix_comments_page", "page_id"),
+        Index("ix_comments_item", "item_id"),
+        CheckConstraint(
+            "(page_id IS NOT NULL) <> (item_id IS NOT NULL)",
+            name="ck_comments_exactly_one_owner",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    page_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("pages.id", ondelete="CASCADE"), nullable=True
+    )
+    item_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("items.id", ondelete="CASCADE"), nullable=True
+    )
+    # better-auth user id: String(64), no FK (see memberships.user_id).
+    author_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    author_label: Mapped[str] = mapped_column(String(320), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    # When the comment was WRITTEN, per the device that wrote it — what the thread sorts and
+    # dates by. `created_at` cannot serve: it is reserved, so the server stamps it at UPLOAD
+    # time, and a comment written offline on Monday would read "just now" on Friday and sort
+    # after everything said in between. Same reason `focus_sessions.started_at` exists.
+    authored_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # NULL until the author edits. Explicit rather than derived from updated_at > created_at:
+    # those are two different clocks (the device's and the server's), so their difference means
+    # nothing — it can hide a quick edit and invent one that never happened.
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class FocusSession(TimestampMixin, Base):

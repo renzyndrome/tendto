@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures";
+import { aiEngineConfigured } from "./helpers/api";
 
 /**
  * Daily recap — the surface for the one ambient AI feature: structured "needs attention" rows
@@ -8,7 +9,9 @@ import { expect, test } from "./fixtures";
  * server reports engine "offline" and the UI renders the structured digest alone. That
  * determinism is part of the contract — the suite must stay network-free and must never spend
  * anyone's subscription. If an engine IS configured locally, content becomes nondeterministic
- * (and billable), so the test skips — decided from ONE probe call, before anything can poll.
+ * (and billable), so the test skips — decided from `/ai/status`, which costs nothing. It used
+ * to probe by calling the recap itself, which meant the very check that existed to avoid
+ * spending the subscription spent one call of it.
  */
 
 const AUTH = process.env.VITE_AUTH_URL ?? "http://localhost:13001";
@@ -67,9 +70,10 @@ test.describe("daily recap", () => {
         activity: { items_overdue: { title: string }[]; items_due_next: { title: string }[] };
       };
     };
-    const probe = await fetchRecap();
+    // FREE probe, and it comes before any polling: with a real engine every poll iteration
+    // below would be a billable model call.
     test.skip(
-      probe.engine !== "offline",
+      await aiEngineConfigured(page.request),
       "a real AI engine is configured — content is nondeterministic and billable",
     );
     await expect

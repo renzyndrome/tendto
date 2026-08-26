@@ -18,7 +18,8 @@ an **offline/local AI option** Notion structurally can't match. All facts curren
 > — a provider abstraction (OpenAI-compatible HTTP provider + an **offline no-key fallback** so it
 > runs without a model), a tenancy-scoped activity gatherer, and `POST /ai/daily-summary` as the
 > user-triggered entry point. The once-daily ambient job `run_daily_summaries()` is scaffolded;
-> scheduler + delivery are deferred. Configure with `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL`
+> scheduler + delivery are deferred. *(Superseded 2026-08-21: that scaffold was deleted and the
+> evening delivery is scheduled on the device — see the status note at the end of this block.)* Configure with `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL`
 > (point `AI_BASE_URL` at an Ollama `/v1` for the local option). The **interactive** tier
 > (per-page Summarize, Ask AI, workspace Q&A + pgvector) is not built yet.
 >
@@ -42,6 +43,60 @@ an **offline/local AI option** Notion structurally can't match. All facts curren
 >   new `warn` token, with the AI prose as the narrative — hidden under the offline engine,
 >   where it would only repeat the digest. The recap also summarizes **periods**: day, week,
 >   month, or everything so far (calendar-aligned; recommendations always anchored on now).
+>
+> **Status (2026-08-21): the INTERACTIVE tier is built — per-page Summarize + inline Ask AI.**
+>
+> - **We do NOT use `@blocknote/xl-ai`, and the recommendation below to do so is withdrawn.**
+>   BlockNote's XL packages are dual-licensed **GPL-3.0 or a paid commercial licence**
+>   (Business, $195/mo). A web app *distributes* its JavaScript to every browser that loads it,
+>   so bundling GPL-3.0 code would put the whole TendTo frontend under copyleft. That is a
+>   licensing decision, not a technical one, and it has to be made deliberately rather than
+>   discovered after the fact. The integration is therefore hand-rolled, and it is small: a
+>   button in the selection toolbar, a button above the page body, a panel, and one endpoint.
+>   The editor APIs we needed (`getSelectedText`, `getSelection`, `replaceBlocks`,
+>   `insertBlocks`, `tryParseMarkdownToBlocks`, `blocksToMarkdownLossy`) are all in the free
+>   `@blocknote/core`.
+> - **AI proposes, the user disposes.** Nothing touches the document until "Keep" is pressed.
+>   An editor that rewrites your paragraph the instant you click is one you stop trusting, and
+>   undo is a poor apology.
+> - **Four curated tasks** — Summarize, Improve writing, Make shorter, Fix spelling & grammar.
+>   No tone slider, no length dial, no "continue writing": each would have to earn its menu row.
+>   **Translate is deliberately deferred** — it needs a language picker, so it should be argued
+>   on its own rather than slipped in.
+> - **Page bodies only, not card descriptions.** A card description is a sentence or two;
+>   "summarize" is meaningless there and the dialog is deliberately spare.
+> - **`GET /ai/status`** tells the client whether an engine exists, so with none configured the
+>   AI affordances are absent rather than broken. Unlike the recap — which always has a real
+>   structured digest to fall back on — there is no offline summary, so this is the first
+>   feature in the app that genuinely requires a configured engine. `POST /ai/compose` refuses
+>   with 503 on the offline provider rather than echoing the input back as an "improvement".
+> - **Streaming landed the same day.** `POST /ai/compose/stream` is SSE over POST (EventSource
+>   can carry neither an Authorization header nor a body, so the client reads the response with
+>   `fetch`). Every provider is accepted: one that cannot stream emits its whole answer as a
+>   single delta, so the client has one code path. The CLI needs
+>   `--output-format stream-json --include-partial-messages --verbose` — stream-json *alone*
+>   emits the reply as one event and buys nothing.
+>
+> **Status (2026-08-21): the recap became ambient — and the scheduler is on the DEVICE.**
+>
+> The plan above says "a scheduled FastAPI job runs each evening per user". That is amended:
+> the evening delivery is a device-local watcher (`apps/web/src/lib/recap-schedule.ts`),
+> defaulting to 9pm and configurable on the recap page. Three reasons, and each would have to be
+> answered before a server cron makes sense again:
+>
+> 1. **The server never learns anyone's timezone.** It is why `focus_sessions.local_date` is a
+>    wall-clock string. "9pm" is meaningless server-side without storing a timezone per user.
+> 2. **There is nothing to deliver with.** Email is provider-agnostic but unconfigured
+>    (`EMAIL_API_KEY` empty), so a nightly job's "delivery" would be a log line.
+> 3. **It would spend inference for every account every night**, whether or not anyone ever
+>    opened the app — and on the CLI engine that is the operator's own subscription.
+>
+> It also matches the guardrail clarification in doc 03: reminders here are device-local, with
+> no server job and no push channel. The honest limitation is that a machine asleep at 9pm gets
+> nothing; the recap page is always there, and a notification about yesterday at breakfast is
+> noise. `app/ai/jobs.py` (a scaffold whose TODO now pointed at the wrong design) was deleted
+> rather than left to mislead. **Revisit a server-side job when email is real** — it needs a
+> stored per-user timezone.
 
 ## Notion AI in 2026 — the benchmark (what to adopt, what to skip)
 
@@ -74,8 +129,10 @@ tomorrow) so the note renders consistently. One toggle in Settings to disable.
 
 - **Trigger:** `/summarize` or a page-menu action; **selection-aware**.
 - **Output:** a summary block at the top, or an inline result the user can keep/discard.
-- **Editor fit:** **BlockNote ships a first-class AI extension** (inline commands + streaming,
-  model-agnostic via the Vercel AI SDK) — well-trodden on our editor, not custom plumbing.
+- **Editor fit:** ~~BlockNote ships a first-class AI extension~~ — **withdrawn 2026-08-21**:
+  `@blocknote/xl-ai` is GPL-3.0 or a paid commercial licence, and shipping GPL JavaScript to
+  browsers would put the whole frontend under copyleft. Hand-rolled instead, on the free
+  `@blocknote/core` selection/block APIs. See the status note above.
 - **Serving:** FastAPI streams tokens over **SSE** into the editor; the backend router picks a
   cheap/fast hosted model by default, or the user's own key / self-hosted Ollama endpoint.
 
@@ -97,7 +154,7 @@ tomorrow) so the note renders consistently. One toggle in Settings to disable.
 | Summarize / inline model | Cheap/fast hosted **or** user-configured Ollama endpoint |
 | Q&A synthesis model | A stronger model, over pgvector retrieval |
 | Streaming | **SSE** from FastAPI into the editor |
-| Editor integration | **BlockNote AI extension** |
+| Editor integration | Hand-rolled on `@blocknote/core` (the XL AI package is GPL/paid — see above) |
 | Retrieval | **pgvector** + hybrid search |
 | Output | **Structured** where it matters (daily summary fields) |
 | External | **TendTo MCP server** |
@@ -107,7 +164,8 @@ tomorrow) so the note renders consistently. One toggle in Settings to disable.
 - **AI-0 — Nothing in the MVP** (Phase 0/1). Editor, cloud sync, collections first.
 - **AI-1 — Ambient daily summary** (Phase 3). One SQL query over server Postgres + one LLM call,
   scheduled. Cheap because the source of truth is plain relational rows.
-- **AI-2 — Per-page Summarize + inline Ask AI** (Phase 3). Streamed via the BlockNote AI extension.
+- **AI-2 — Per-page Summarize + inline Ask AI** (Phase 3). **Built 2026-08-21**, hand-rolled;
+  streaming still to come.
 - **AI-3 — Local-model (Ollama) option** (Phase 3/4). Offline, private summarize — with the local
   replica, the Notion-beating differentiator returns in full.
 - **AI-4 — Q&A over workspace** (Phase 4). pgvector + hybrid RAG, answers with citations.

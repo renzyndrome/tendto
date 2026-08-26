@@ -50,7 +50,9 @@ strict `tsc` is the enforced gate.
 - Backend (`apps/api/app/ai/`): the **ambient daily summary** — `provider.py` (OpenAI-compatible
   `HttpChatProvider` + `FallbackProvider` that needs no network/key), `summary.py`
   (`build_daily_summary`, tenancy-scoped activity via `memberships` join, UTC day bounds),
-  `POST /ai/daily-summary` (user-triggered), and `jobs.py::run_daily_summaries()` scaffold
+  `POST /ai/daily-summary` (user-triggered), and a `jobs.py::run_daily_summaries()` scaffold
+  *(deleted 2026-08-21 — the evening delivery is scheduled on the device; see
+  [[ai-engines]])*
   (scheduler + delivery deferred). Config: `AI_BASE_URL`/`AI_API_KEY`/`AI_MODEL` (empty key ⇒
   offline fallback, so tests need no network). 23 API tests pass.
 - **Still deferred** (need live infra/keys, not built): Phase 2 invitations/roles + presence +

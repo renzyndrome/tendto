@@ -286,7 +286,9 @@ test.describe("card detail", () => {
     const detail = page.getByTestId("item-detail");
     await expect(detail).toBeVisible();
 
-    for (const absent of ["Labels", "Attachments", "Add an item", "Comments and activity"]) {
+    // "Activity" is the ruled-out half of Trello's "Comments and activity": a log of what other
+    // people did. A comment thread is people talking, and it shipped deliberately.
+    for (const absent of ["Labels", "Attachments", "Add an item", "Activity"]) {
       await expect(detail.getByText(absent, { exact: false })).toHaveCount(0);
     }
     // The fields that DO belong are all present.
@@ -294,5 +296,6 @@ test.describe("card detail", () => {
     await expect(detail.getByTestId("detail-due-date")).toBeVisible();
     await expect(detail.getByLabel("Card assignee")).toBeVisible();
     await expect(detail.getByTestId("detail-description")).toBeVisible();
+    await expect(detail.getByTestId("comment-section")).toBeVisible();
   });
 });

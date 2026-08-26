@@ -166,6 +166,9 @@ export async function moveItemToStatus(row: ItemRow, status: string): Promise<vo
  * Delete an item and its description blocks. Postgres cascades blocks from the item FK, but
  * the local replica has no foreign keys, so the cascade is explicit here — exactly as
  * deletePageCascade does for a page's blocks. Both deletes sync up.
+ *
+ * Comments are deliberately left to the server's FK cascade — deleting a teammate's comment
+ * from here would 403 and wedge the upload queue. See the note on `deletePageCascade`.
  */
 export async function deleteItem(id: string): Promise<void> {
   await db.writeTransaction(async (tx) => {
