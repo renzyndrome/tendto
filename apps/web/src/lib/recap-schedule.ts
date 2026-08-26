@@ -96,13 +96,28 @@ function markDelivered(dateKey: string): void {
   }
 }
 
-/** Forget today's delivery — used by the "Send one now" control so it can be tried again. */
+/** Forget today's delivery, so the evening watcher will try again. */
 export function clearDelivered(): void {
   try {
     localStorage.removeItem(DELIVERED_KEY);
   } catch {
     // Nothing to do.
   }
+}
+
+/**
+ * Fetch and show a recap right now, ignoring the clock and the "already delivered" marker.
+ *
+ * The point is proof: someone who has just configured an AI engine wants to know it works
+ * without waiting until nine o'clock to find out it doesn't.
+ */
+export async function sendRecapNow(onOpen: () => void): Promise<void> {
+  const recap = await fetchToday();
+  notify("Your evening recap", {
+    body: summarise(recap),
+    tag: "tendto-recap",
+    onClick: onOpen,
+  });
 }
 
 /**

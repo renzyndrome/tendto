@@ -123,17 +123,13 @@ test.describe("evening recap", () => {
     expect(await notifications(page)).toHaveLength(0);
   });
 
-  test("the time is configurable, and says when it is off", async ({ authedPage: page }) => {
+  test("the time is configurable and survives a reload", async ({ authedPage: page }) => {
     await page.getByRole("button", { name: "Daily recap" }).click();
 
-    const control = page.getByTestId("recap-schedule");
-    await expect(control).toBeVisible();
+    await expect(page.getByTestId("recap-schedule")).toBeVisible();
     // On by default — the daily summary is the signature ambient feature.
     await expect(page.getByTestId("recap-schedule-enabled")).toBeChecked();
     await expect(page.getByTestId("recap-schedule-time")).toHaveValue("21:00");
-    // Headless Chromium denies notifications, so the row explains why nothing would arrive
-    // rather than pretending the setting works.
-    await expect(page.getByTestId("recap-schedule-hint")).toBeVisible();
 
     await page.getByTestId("recap-schedule-time").fill("07:30");
     await page.reload();
@@ -147,6 +143,66 @@ test.describe("evening recap", () => {
     await expect(page.getByTestId("recap-schedule-enabled")).not.toBeChecked({
       timeout: 30_000,
     });
+  });
+
+  test("it offers to fix the missing link rather than failing silently", async ({
+    authedPage: page,
+  }) => {
+    // Headless Chromium denies notifications, which is the exact state someone lands in after
+    // configuring an AI engine and wondering why nothing arrives. The row must offer the fix,
+    // not describe it.
+    await page.getByRole("button", { name: "Daily recap" }).click();
+
+    await expect(page.getByTestId("recap-schedule-hint")).toHaveText("Turn on notifications");
+    // ...and until that is sorted, there is nothing to test-send.
+    await expect(page.getByTestId("recap-send-now")).toHaveCount(0);
+  });
+
+  test("it names the engine that will write the recap", async ({ authedPage: page }) => {
+    // "Have I actually set up my AI?" answered on the page itself.
+    await page.route("**/ai/status", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ engine: "claude-cli", available: true, tasks: [] }),
+      }),
+    );
+    await page.getByRole("button", { name: "Daily recap" }).click();
+
+    await expect(page.getByTestId("recap-engine")).toHaveText("Written by Claude CLI.");
+  });
+
+  test("with no engine it says the recap still works, just without the prose", async ({
+    authedPage: page,
+  }) => {
+    // The digest is a plain database read, so "no engine" is a smaller loss than "broken".
+    await page.route("**/ai/status", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ engine: "offline", available: false, tasks: [] }),
+      }),
+    );
+    await page.getByRole("button", { name: "Daily recap" }).click();
+
+    await expect(page.getByTestId("recap-engine")).toContainText("No AI engine configured");
+    await expect(page.getByTestId("recap-engine")).toContainText("AI_API_KEY");
+  });
+
+  test("Send one now proves the setup works", async ({ page, browserName }, testInfo) => {
+    test.skip(browserName !== "chromium", "notification stub is Chromium-shaped");
+    await captureNotifications(page);
+    await scheduleAt(page, 120); // deliberately NOT due yet — the button ignores the clock
+    await stubRecap(page);
+    await signIn(page, testInfo);
+
+    await page.getByRole("button", { name: "Daily recap" }).click();
+    await page.getByTestId("recap-send-now").click();
+
+    await expect
+      .poll(async () => (await notifications(page)).length, { timeout: 15_000 })
+      .toBe(1);
+    expect((await notifications(page))[0].title).toBe("Your evening recap");
   });
 });
 

@@ -152,7 +152,7 @@ export function DailyRecap({ anchorKey, period }: { anchorKey: string; period: P
             </div>
           ) : null}
         </div>
-        <RecapScheduleControl />
+        <RecapScheduleControl onOpenRecap={() => open(period, anchorKey)} />
       </header>
 
       {recap.status === "loading" ? (

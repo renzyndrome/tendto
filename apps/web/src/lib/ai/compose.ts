@@ -21,6 +21,16 @@ export interface EngineStatus {
   tasks: AiTask[];
 }
 
+/** How an engine name reads to a person. Unknown names show as-is rather than as "custom". */
+const ENGINE_LABELS: Record<string, string> = {
+  "claude-cli": "Claude CLI",
+  "codex-cli": "Codex CLI",
+  api: "your API key",
+  offline: "no AI engine",
+};
+
+export const engineLabel = (engine: string): string => ENGINE_LABELS[engine] ?? engine;
+
 export interface ComposeResult {
   text: string;
   engine: string;

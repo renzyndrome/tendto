@@ -258,3 +258,21 @@ worse than no scaffold. Revisit when email is real; it needs a per-user timezone
   per-device too. The thing being configured is what THIS machine does at 9pm.
 - **The control lives on `/recap`**, not in a settings dialog: there is no user-settings panel,
   and that page is where someone thinks "I'd like this every evening".
+- **The row shows the whole chain and offers the missing link.** Three things must be true
+  before anything arrives — schedule on, browser granted, TendTo's own switch on — plus a
+  fourth for the prose (an engine). Whichever is missing is offered as a button, not described.
+  "Send one now" proves the setup without waiting until nine o'clock to find out it is broken.
+
+## The config trap that made "I set up my AI" not work
+
+`AI_BASE_URL` defaulted to `""` while `AI_MODEL` defaulted to `gpt-4o-mini` — an OpenAI model
+with no OpenAI URL. Setting **only** `AI_API_KEY`, which is the obvious thing to do with an
+OpenAI account, produced a relative `/chat/completions` and an unhelpful protocol error.
+
+Two halves to the fix, and the second is the one that matters: the default is now OpenAI, **and
+a blank value is treated as unset**. `.env.example` ships keys with nothing after the `=`, and
+pydantic treats `""` as a deliberate value that overrides the default — so the default alone
+would have fixed nothing for anyone who had actually copied the example file. Same fallback
+applies to `AI_MODEL`, and both are trimmed (an invisible trailing space in a `.env` line would
+otherwise break the URL). `test_ai_engine_selection.py` pins the whole matrix: CLI wins, then a
+key, then offline.
