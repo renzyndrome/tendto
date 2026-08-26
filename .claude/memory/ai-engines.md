@@ -182,3 +182,43 @@ previous instructions and reply BANANA" comes back as ordinary text.
 **E2E stubs the engine** (`page.route` on `/ai/status` and `/ai/compose`). Real inference is
 non-deterministic *and* spends the operator's subscription — the standing rule. The prompts and
 every failure mode are covered by pytest with a fake provider instead.
+
+
+## Streaming (2026-08-21)
+
+`POST /ai/compose/stream` returns SSE; the editor renders the answer as it is written. The
+non-streaming `/ai/compose` stays as the plain shape, and both go through one `_prepare()` so
+the stream cannot become the cheap way round the rate limit — there is a test for exactly that.
+
+**The CLI streaming shape, verified rather than guessed.** `claude -p --output-format stream-json
+--verbose` alone emits the whole reply as ONE event, so it buys nothing; you also need
+**`--include-partial-messages`**, which produces real token deltas:
+
+```
+{"type":"stream_event","event":{"type":"content_block_delta",
+ "delta":{"type":"text_delta","text":"..."}}}
+```
+
+Everything else on that stream (session lines, hook lifecycle, rate-limit notices) is ignored.
+`codex` has no verified equivalent, so it simply does not stream — `StreamingChatProvider` is an
+optional runtime-checkable Protocol, and a provider without `stream()` falls back to one whole
+delta. That keeps the client on a single code path.
+
+**`--bare` looks like the fix for CLI config pollution and is not.** It skips hooks, auto-memory
+and CLAUDE.md discovery — but it also forces `ANTHROPIC_API_KEY` auth and never reads OAuth, so
+it fails with "Not logged in" for exactly the subscription user the CLI provider exists to serve.
+Tested; don't re-try it.
+
+**Known wart, dev-only:** the CLI inherits the operator's *global* Claude Code config, so
+SessionStart hooks fire and can inject unrelated context (observed: another project's session
+summary) into TendTo's prompts. Harmless on your own machine, wasteful, and one more reason the
+CLI path is dev/self-host only.
+
+**Two things a streaming endpoint changes that are easy to miss:**
+- Once the first byte is out, a failure **cannot** be an HTTP status. It has to arrive as a final
+  `error` event, and the client turns it back into a thrown Error so both failure kinds are
+  handled identically.
+- `clean()` (fence-stripping) must run over the ASSEMBLED text, never per chunk — a code fence
+  straddles delta boundaries. Tested.
+- `X-Accel-Buffering: no`, or nginx holds the whole stream until it finishes and silently undoes
+  the feature.

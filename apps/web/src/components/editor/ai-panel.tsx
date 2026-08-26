@@ -9,9 +9,9 @@
  * to be read before it is accepted, and the house already has this dialog shape (item-detail,
  * workspace-settings). An inline box would be prettier and much easier to get wrong.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { compose, type AiTask } from "../../lib/ai/compose";
+import { streamCompose, type AiTask } from "../../lib/ai/compose";
 import { Spinner } from "../ui/spinner";
 
 interface AiPanelProps {
@@ -27,20 +27,44 @@ interface AiPanelProps {
 
 type Phase =
   | { kind: "choose" }
-  | { kind: "running"; task: AiTask }
+  // `text` fills in as the engine writes. Watching it arrive is most of what makes this feel
+  // usable — ten silent seconds reads as broken even when it is working perfectly.
+  | { kind: "running"; task: AiTask; text: string }
   | { kind: "done"; task: AiTask; text: string; truncated: boolean }
   | { kind: "error"; task: AiTask; message: string };
 
 export function AiPanel({ source, tasks, initialTask, onApply, onClose }: AiPanelProps) {
   const [phase, setPhase] = useState<Phase>({ kind: "choose" });
 
+  // Abort the engine when the panel closes mid-answer. On the CLI engine an abandoned stream
+  // is an abandoned subprocess, so this is not merely tidiness.
+  const inFlight = useRef<AbortController | null>(null);
+  useEffect(() => () => inFlight.current?.abort(), []);
+
   const run = useCallback(
     async (task: AiTask) => {
-      setPhase({ kind: "running", task });
+      inFlight.current?.abort();
+      const controller = new AbortController();
+      inFlight.current = controller;
+      setPhase({ kind: "running", task, text: "" });
       try {
-        const result = await compose(task.key, source);
+        const result = await streamCompose(
+          task.key,
+          source,
+          (piece) =>
+            setPhase((current) =>
+              // Ignore deltas from a run that has been superseded ("Try again" while the
+              // previous answer is still arriving).
+              current.kind === "running" && current.task.key === task.key
+                ? { ...current, text: current.text + piece }
+                : current,
+            ),
+          controller.signal,
+        );
+        if (controller.signal.aborted) return;
         setPhase({ kind: "done", task, text: result.text, truncated: result.truncated });
       } catch (error) {
+        if (controller.signal.aborted) return;
         setPhase({
           kind: "error",
           task,
@@ -113,7 +137,19 @@ export function AiPanel({ source, tasks, initialTask, onApply, onClose }: AiPane
             </ul>
           ) : null}
 
-          {phase.kind === "running" ? <Spinner label="Thinking…" /> : null}
+          {phase.kind === "running" ? (
+            phase.text ? (
+              <p
+                data-testid="ai-streaming"
+                className="whitespace-pre-wrap break-words text-sm text-fg"
+              >
+                {phase.text}
+                <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-accent align-text-bottom" />
+              </p>
+            ) : (
+              <Spinner label="Thinking…" />
+            )
+          ) : null}
 
           {phase.kind === "done" ? (
             <>

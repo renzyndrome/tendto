@@ -69,9 +69,12 @@ an **offline/local AI option** Notion structurally can't match. All facts curren
 >   structured digest to fall back on — there is no offline summary, so this is the first
 >   feature in the app that genuinely requires a configured engine. `POST /ai/compose` refuses
 >   with 503 on the offline provider rather than echoing the input back as an "improvement".
-> - **Still not streaming.** Doc-06 wants SSE and it remains the right next step; v1 returns the
->   whole result with a pending state. Worth noting the CLI engine needs a different invocation
->   (`--output-format stream-json`) to stream, so it is not purely a client change.
+> - **Streaming landed the same day.** `POST /ai/compose/stream` is SSE over POST (EventSource
+>   can carry neither an Authorization header nor a body, so the client reads the response with
+>   `fetch`). Every provider is accepted: one that cannot stream emits its whole answer as a
+>   single delta, so the client has one code path. The CLI needs
+>   `--output-format stream-json --include-partial-messages --verbose` — stream-json *alone*
+>   emits the reply as one event and buys nothing.
 
 ## Notion AI in 2026 — the benchmark (what to adopt, what to skip)
 

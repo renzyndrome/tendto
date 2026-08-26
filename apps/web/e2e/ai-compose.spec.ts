@@ -30,15 +30,23 @@ async function stubEngine(page: Page, options: { available: boolean; reply?: str
       }),
     }),
   );
-  await page.route("**/ai/compose", (route) =>
+  const reply = options.reply ?? "A tidy replacement.";
+  // The editor streams, so the stub speaks SSE. Split into two deltas so the assembling path
+  // is exercised rather than a single whole-answer frame.
+  const half = Math.ceil(reply.length / 2);
+  await page.route("**/ai/compose/stream", (route) =>
     route.fulfill({
       status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        text: options.reply ?? "A tidy replacement.",
-        engine: "stub",
-        truncated: false,
-      }),
+      contentType: "text/event-stream",
+      body: [
+        `data: ${JSON.stringify({ delta: reply.slice(0, half) })}`,
+        "",
+        `data: ${JSON.stringify({ delta: reply.slice(half) })}`,
+        "",
+        `data: ${JSON.stringify({ done: true, text: reply, truncated: false })}`,
+        "",
+        "",
+      ].join("\n"),
     }),
   );
 }
@@ -171,11 +179,19 @@ test.describe("interactive AI", () => {
 
   test("an engine failure is reported, not silently swallowed", async ({ authedPage: page }) => {
     await stubEngine(page, { available: true });
-    await page.route("**/ai/compose", (route) =>
+    // Mid-stream failures cannot be an HTTP status — the response has already started — so
+    // they arrive as a final `error` event. That path is the one worth guarding.
+    await page.route("**/ai/compose/stream", (route) =>
       route.fulfill({
-        status: 502,
-        contentType: "application/json",
-        body: JSON.stringify({ detail: "The AI engine failed: upstream exploded" }),
+        status: 200,
+        contentType: "text/event-stream",
+        body: [
+          `data: ${JSON.stringify({ delta: "half a thou" })}`,
+          "",
+          `data: ${JSON.stringify({ error: "upstream exploded" })}`,
+          "",
+          "",
+        ].join("\n"),
       }),
     );
     await newPageWithText(page, "some text");

@@ -12,15 +12,19 @@ engine configured the interactive features are hidden outright rather than shown
 the recap, which still has a real structured digest to fall back on.
 """
 
+import json
 import logging
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+from typing import NamedTuple
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.compose import TASKS, clean, truncate, wrap_user_text
+from app.ai.compose import TASKS, Task, clean, truncate, wrap_user_text
 from app.ai.limits import gate, take
-from app.ai.provider import ChatProvider, get_provider
+from app.ai.provider import ChatProvider, StreamingChatProvider, get_provider
 from app.ai.summary import gather_activity, summarize
 from app.auth import CurrentUser, get_current_user
 from app.db import get_session
@@ -95,18 +99,23 @@ async def status(
     )
 
 
-@router.post("/compose", response_model=ComposeResponse)
-async def compose(
-    body: ComposeRequest,
-    user: CurrentUser = Depends(get_current_user),
-    provider: ChatProvider = Depends(get_provider),
-) -> ComposeResponse:
-    """Run one curated task over the user's own text.
+class _Prepared(NamedTuple):
+    task: Task
+    prompt: str
+    engine: str
+    truncated: bool
+
+
+def _prepare(body: ComposeRequest, user: CurrentUser, provider: ChatProvider) -> _Prepared:
+    """Validate, refuse an unusable engine, and spend one unit of the caller's allowance.
+
+    Shared by both entry points so the streaming path cannot drift into being the cheap way
+    round the guards.
 
     No workspace or membership check, and that is correct rather than an oversight: the text
     arrives in the request body from the caller's own editor. Nothing is read from the database
     and nothing is written, so there is no tenant boundary to cross here — the only thing being
-    spent is inference.
+    spent is inference, which is what the rate limit is for.
     """
     task = TASKS.get(body.task)
     if task is None:
@@ -129,11 +138,26 @@ async def compose(
         raise HTTPException(status_code=429, detail="Too many AI requests — try again shortly.")
 
     prompt, truncated = truncate(text)
+    return _Prepared(task=task, prompt=wrap_user_text(prompt), engine=engine, truncated=truncated)
+
+
+@router.post("/compose", response_model=ComposeResponse)
+async def compose(
+    body: ComposeRequest,
+    user: CurrentUser = Depends(get_current_user),
+    provider: ChatProvider = Depends(get_provider),
+) -> ComposeResponse:
+    """Run one curated task over the user's own text, and return the whole result.
+
+    The streaming sibling below is what the editor uses; this stays as the plain, cacheable
+    shape for anything that just wants an answer.
+    """
+    task, prompt, engine, truncated = _prepare(body, user, provider)
     try:
         # The gate bounds how many engine calls run at once. It matters most on the CLI engine,
         # where each call is a real subprocess with a two-minute timeout.
         async with gate():
-            result = await provider.complete(task.system, wrap_user_text(prompt))
+            result = await provider.complete(task.system, prompt)
     except Exception as exc:  # any engine failure is one failure to the user
         # Deliberately generic: the CLI provider's message carries up to 500 chars of subprocess
         # stderr (host paths, config) and the HTTP provider's carries the upstream URL. Neither
@@ -145,3 +169,69 @@ async def compose(
     if not out:
         raise HTTPException(status_code=502, detail="The AI engine returned nothing")
     return ComposeResponse(text=out, engine=engine, truncated=truncated)
+
+
+@router.post("/compose/stream")
+async def compose_stream(
+    body: ComposeRequest,
+    user: CurrentUser = Depends(get_current_user),
+    provider: ChatProvider = Depends(get_provider),
+) -> StreamingResponse:
+    """The same task, delivered as it is written.
+
+    Watching the words appear is most of what makes this feel usable — a rewrite that takes ten
+    silent seconds feels broken even when it is working. Server-sent events over POST rather
+    than `EventSource`, because EventSource cannot carry an Authorization header or a body; the
+    client reads the response stream with fetch.
+
+    Every provider is accepted here. One that cannot stream simply emits its whole answer as a
+    single delta, so the client needs one code path instead of two.
+
+    Errors after the first byte cannot be an HTTP status — the response has already started — so
+    they arrive as a final `error` event and the client shows them like any other failure.
+    """
+    prepared = _prepare(body, user, provider)
+
+    async def events() -> AsyncIterator[str]:
+        def frame(payload: dict[str, object]) -> str:
+            return f"data: {json.dumps(payload)}\n\n"
+
+        pieces: list[str] = []
+        try:
+            # The gate wraps the WHOLE stream, not just its start: on the CLI engine a live
+            # stream is a live subprocess, and that is the thing being rationed.
+            async with gate():
+                if isinstance(provider, StreamingChatProvider):
+                    async for piece in provider.stream(prepared.task.system, prepared.prompt):
+                        pieces.append(piece)
+                        yield frame({"delta": piece})
+                else:
+                    whole = await provider.complete(prepared.task.system, prepared.prompt)
+                    pieces.append(whole)
+                    yield frame({"delta": whole})
+        except Exception as exc:
+            logger.exception(
+                "AI stream failed (task=%s, engine=%s)", prepared.task.key, prepared.engine
+            )
+            yield frame({"error": "The AI engine failed."})
+            del exc
+            return
+
+        # `clean` runs over the assembled text, never the pieces: a code fence can straddle two
+        # deltas, so stripping per-chunk would miss it.
+        text = clean("".join(pieces))
+        if not text:
+            yield frame({"error": "The AI engine returned nothing."})
+            return
+        yield frame({"done": True, "text": text, "truncated": prepared.truncated})
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            # nginx buffers proxied responses by default, which would hold the whole stream
+            # back until it finished and quietly undo the entire point of this endpoint.
+            "X-Accel-Buffering": "no",
+        },
+    )

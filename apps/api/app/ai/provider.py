@@ -11,10 +11,12 @@ Features never hard-code a vendor — they depend on the `ChatProvider` Protocol
 """
 
 import asyncio
+import json
 import shutil
 import tempfile
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import ClassVar, Protocol
+from typing import ClassVar, Protocol, runtime_checkable
 
 import httpx
 
@@ -25,6 +27,19 @@ class ChatProvider(Protocol):
     """A minimal chat-completion port. One system message, one user message, one string back."""
 
     async def complete(self, system: str, user: str) -> str: ...
+
+
+@runtime_checkable
+class StreamingChatProvider(Protocol):
+    """A provider that can emit text as it is generated.
+
+    Optional on purpose: the offline fallback has nothing to stream, and a CLI we have not
+    verified should not pretend to. Callers check with `isinstance(provider,
+    StreamingChatProvider)` and fall back to `complete()`, so a provider gains streaming by
+    growing the method — no registry to keep in step.
+    """
+
+    async def stream(self, system: str, user: str) -> AsyncIterator[str]: ...
 
 
 class HttpChatProvider:
@@ -56,6 +71,45 @@ class HttpChatProvider:
             data = response.json()
         return data["choices"][0]["message"]["content"]
 
+    async def stream(self, system: str, user: str) -> AsyncIterator[str]:
+        """Server-sent chunks from an OpenAI-compatible endpoint.
+
+        The wire format is `data: {json}` lines terminated by `data: [DONE]`. Malformed lines
+        are skipped rather than raising: one bad frame should not lose a response that is
+        otherwise arriving fine.
+        """
+        payload = {
+            "model": self._model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "stream": True,
+        }
+        async with (
+            httpx.AsyncClient(timeout=self._timeout) as client,
+            client.stream(
+                "POST",
+                f"{self._base_url}/chat/completions",
+                json=payload,
+                headers={"Authorization": f"Bearer {self._api_key}"},
+            ) as response,
+        ):
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if not line.startswith("data:"):
+                    continue
+                body = line[len("data:") :].strip()
+                if body == "[DONE]":
+                    return
+                try:
+                    chunk = json.loads(body)
+                    piece = chunk["choices"][0]["delta"].get("content")
+                except (json.JSONDecodeError, KeyError, IndexError):
+                    continue
+                if piece:
+                    yield piece
+
 
 class CliChatProvider:
     """Inference through an installed coding-agent CLI (`claude -p` / `codex exec`).
@@ -78,6 +132,14 @@ class CliChatProvider:
     _COMMANDS: ClassVar[dict[str, tuple[str, ...]]] = {
         "claude": ("claude", "-p", "--max-turns", "1"),
         "codex": ("codex", "exec", "--skip-git-repo-check", "-"),
+    }
+
+    #: Extra argv for token-by-token output. Verified against `claude` on 2026-08-21: without
+    #: `--include-partial-messages` the CLI emits the whole reply as a single event, so
+    #: stream-json ALONE buys nothing. `--verbose` is required alongside stream-json under -p.
+    #: Absent for `codex`, whose argv is unverified — it simply does not stream.
+    _STREAM_ARGS: ClassVar[dict[str, tuple[str, ...]]] = {
+        "claude": ("--output-format", "stream-json", "--include-partial-messages", "--verbose"),
     }
 
     def __init__(self, *, cli: str, model: str = "", timeout: float = 120.0) -> None:
@@ -128,6 +190,90 @@ class CliChatProvider:
             return text
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
+
+    async def stream(self, system: str, user: str) -> AsyncIterator[str]:
+        """Token deltas from the CLI's newline-delimited JSON stream.
+
+        The shape (verified, not guessed):
+          {"type":"stream_event","event":{"type":"content_block_delta",
+           "delta":{"type":"text_delta","text":"..."}}}
+        Everything else on that stream — session lines, hook lifecycle, rate-limit notices — is
+        ignored. Anything unparseable is skipped rather than raised: a single odd line should
+        not lose a reply that is otherwise arriving.
+
+        Same containment as `complete`: prompt over stdin, empty scratch cwd, one turn.
+        """
+        stream_args = self._STREAM_ARGS.get(self._cli)
+        if stream_args is None:  # pragma: no cover - only reachable for an unverified CLI
+            raise RuntimeError(f"{self._cli} does not support streaming")
+        argv = [*self._COMMANDS[self._cli], *stream_args]
+        if self._model:
+            argv += ["--model", self._model]
+        if shutil.which(argv[0]) is None:
+            raise RuntimeError(
+                f"AI_CLI is '{self._cli}' but '{argv[0]}' is not on the server's PATH"
+            )
+        prompt = f"{system}\n\n---\n\n{user}\n"
+
+        scratch = Path(tempfile.mkdtemp(prefix="tendto-ai-"))
+        process = None
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *argv,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+                cwd=scratch,
+                # The CLI writes many small JSON lines; the default 64KB limit is ample, but a
+                # single huge line would otherwise raise LimitOverrunError mid-stream.
+                limit=1024 * 1024,
+            )
+            assert process.stdin is not None and process.stdout is not None
+            process.stdin.write(prompt.encode())
+            await process.stdin.drain()
+            process.stdin.close()
+
+            deadline = asyncio.get_running_loop().time() + self._timeout
+            while True:
+                remaining = deadline - asyncio.get_running_loop().time()
+                if remaining <= 0:
+                    raise RuntimeError(f"{self._cli} timed out after {self._timeout:.0f}s")
+                try:
+                    line = await asyncio.wait_for(process.stdout.readline(), timeout=remaining)
+                except TimeoutError:
+                    raise RuntimeError(
+                        f"{self._cli} timed out after {self._timeout:.0f}s"
+                    ) from None
+                if not line:
+                    break
+                piece = _cli_delta(line)
+                if piece:
+                    yield piece
+        finally:
+            # Covers the caller abandoning the generator half-way (the browser navigating away),
+            # which is otherwise a subprocess left running until its own timeout.
+            if process is not None and process.returncode is None:
+                process.kill()
+                await process.wait()
+            shutil.rmtree(scratch, ignore_errors=True)
+
+
+def _cli_delta(line: bytes) -> str:
+    """The text of one `content_block_delta` line, or "" for every other kind of line."""
+    try:
+        event = json.loads(line)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return ""
+    if not isinstance(event, dict) or event.get("type") != "stream_event":
+        return ""
+    inner = event.get("event")
+    if not isinstance(inner, dict) or inner.get("type") != "content_block_delta":
+        return ""
+    delta = inner.get("delta")
+    if not isinstance(delta, dict) or delta.get("type") != "text_delta":
+        return ""
+    text = delta.get("text")
+    return text if isinstance(text, str) else ""
 
 
 class FallbackProvider:
