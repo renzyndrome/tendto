@@ -58,18 +58,6 @@ export function loadEngineStatus(): Promise<EngineStatus> {
   return pending;
 }
 
-/** Forget the cached answer — only useful if the server's configuration changed under us. */
-export function resetEngineStatus(): void {
-  pending = null;
-}
-
-export async function compose(task: string, text: string): Promise<ComposeResult> {
-  const res = await apiFetch("/ai/compose", {
-    method: "POST",
-    body: JSON.stringify({ task, text }),
-  });
-  return (await res.json()) as ComposeResult;
-}
 
 
 /**

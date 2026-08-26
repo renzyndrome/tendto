@@ -157,7 +157,11 @@ test.describe("interactive AI", () => {
     await newPageWithText(page, "some words");
 
     await page.keyboard.press("Control+A");
-    await expect(page.getByRole("button", { name: "Ask AI" })).toHaveText("Ask AI");
+    // Wait for the floating toolbar to actually mount before reading its text — the selection
+    // and the toolbar's appearance are two separate frames.
+    const button = page.getByRole("button", { name: "Ask AI" });
+    await expect(button).toBeVisible();
+    await expect(button).toHaveText("Ask AI");
   });
 
   test("nothing changes until you keep it", async ({ authedPage: page }) => {

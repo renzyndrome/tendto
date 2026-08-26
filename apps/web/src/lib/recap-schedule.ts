@@ -96,15 +96,6 @@ function markDelivered(dateKey: string): void {
   }
 }
 
-/** Forget today's delivery, so the evening watcher will try again. */
-export function clearDelivered(): void {
-  try {
-    localStorage.removeItem(DELIVERED_KEY);
-  } catch {
-    // Nothing to do.
-  }
-}
-
 /**
  * Fetch and show a recap right now, ignoring the clock and the "already delivered" marker.
  *

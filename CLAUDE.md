@@ -32,8 +32,10 @@ decisions (sync model, stack, TanStack Router-not-Start, no Flutter) without bei
 ## Stack
 
 - **apps/web**: Vite + React 19 + TypeScript, TanStack Router (NOT TanStack Start, NOT Next.js),
-  thin TanStack Query, Zustand (UI state only), Tailwind + Radix/shadcn, BlockNote editor
-  (without its Yjs collab mode), `@powersync/web` + `@powersync/react`.
+  thin TanStack Query, Zustand (UI state only), Tailwind, BlockNote editor (without its Yjs
+  collab mode), `@powersync/web` + `@powersync/react`. **No component library** — doc 07 named
+  Radix/shadcn but none was ever installed; dialogs, popovers and toggles are hand-rolled from
+  the semantic tokens (see [[theming]]). Adding one now is a decision, not a convenience.
 - **apps/api**: FastAPI (async), SQLAlchemy 2 (async) + Alembic, Pydantic v2, Postgres
   (Supabase in cloud, plain Postgres in docker for dev), better-auth JWT verification (JWKS).
 - **apps/auth**: better-auth on Hono + Bun (dev :13001) — sessions, organizations/invites, JWT + JWKS.
@@ -42,6 +44,7 @@ decisions (sync model, stack, TanStack Router-not-Start, no Flutter) without bei
 
 ## Commands
 
+- `make dev` / `make dev-down` — boot the whole stack (db+mongo+powersync+auth+api) then Vite
 - `make db` / `make db-down` — start/stop dev Postgres (host :15432) + PowerSync (host :18080)
 - `make api` — run FastAPI dev server (uvicorn, :18000)
 - `make auth` — run better-auth service (:13001)
@@ -54,16 +57,25 @@ decisions (sync model, stack, TanStack Router-not-Start, no Flutter) without bei
 
 - Python: ruff format + lint; full type hints; async everywhere in request paths.
 - TS: strict mode; no `any`; components function-style; files kebab-case, components PascalCase.
-- Schema changes touch three places, always together: SQLAlchemy model + Alembic migration +
-  `apps/web/src/lib/powersync/schema.ts` (+ sync rules if a new table). The `sync-rules` skill
-  documents this.
+- Schema changes touch FOUR places, always together: SQLAlchemy model + Alembic migration +
+  `apps/web/src/lib/powersync/schema.ts` + `TABLE_MODELS` in `app/routers/sync.py` (the upload
+  allowlist — a table missing from it is rejected with a 400), plus sync rules for a new table.
+  The `sync-rules` skill documents this, including which tables belong in NO bucket.
 - Commits: conventional commits (`feat:`, `fix:`, `chore:`...), small and focused.
 
 ## Product guardrails
 
 - Every feature must pass the **"does this add clutter?"** test (see `docs/planning/README.md`).
 - Curated block set only; resist adding block types.
-- The only ambient AI is the daily summary. Interactive AI is user-triggered only.
+- The only ambient AI is the daily summary — and it is scheduled ON THE DEVICE
+  (`apps/web/src/lib/recap-schedule.ts`), not by a server cron; the server never learns anyone's
+  timezone. Interactive AI (Summarize, Ask AI) is user-triggered only, and nothing it produces
+  touches the document until the user presses Keep.
+- **Never let a test spend the AI subscription.** E2E stubs `/ai/*` via `page.route`; pytest uses
+  fake providers. Real inference belongs in a manual probe.
+- **BlockNote's `xl-*` packages are GPL-3.0 or paid** (AI, multi-column, PDF/DOCX export). We
+  ship JavaScript to browsers, so copyleft would reach the whole frontend — check the licence
+  before reaching for one.
 
 ## Memory
 

@@ -66,13 +66,6 @@ export function parseBody(body: string): BodySegment[] {
   return segments;
 }
 
-/** The user ids mentioned in a body (deduplicated, in order of first appearance). */
-export function mentionedUserIds(body: string): string[] {
-  const ids = parseBody(body)
-    .filter((segment): segment is Extract<BodySegment, { kind: "mention" }> => segment.kind === "mention")
-    .map((segment) => segment.userId);
-  return [...new Set(ids)];
-}
 
 /**
  * The in-progress `@query` immediately before the caret, or null.
