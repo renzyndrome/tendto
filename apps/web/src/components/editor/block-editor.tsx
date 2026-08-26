@@ -19,9 +19,15 @@ import {
   BlockTypeSelect,
   CreateLinkButton,
   FormattingToolbar,
+  FormattingToolbarController,
+  getFormattingToolbarItems,
+  useComponentsContext,
   useCreateBlockNote,
 } from "@blocknote/react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { loadEngineStatus, type AiTask } from "../../lib/ai/compose";
+import { AiPanel } from "./ai-panel";
 
 import {
   persistBlocks,
@@ -48,6 +54,24 @@ async function uploadInlineFile(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error ?? new Error("Could not read file"));
     reader.readAsDataURL(file);
   });
+}
+
+/** "Ask AI" in the selection toolbar, themed by BlockNote's own component set so it matches
+ *  the buttons beside it rather than looking bolted on. */
+function AskAiButton({ onClick }: { onClick: () => void }) {
+  const Components = useComponentsContext();
+  if (!Components) return null;
+  return (
+    <Components.FormattingToolbar.Button
+      className="bn-button"
+      mainTooltip="Rewrite, shorten, or fix the selected text"
+      onClick={onClick}
+    >
+      {/* Children, not just `label`: the themed button renders `label` as an aria-label only,
+          so a label-only button is a blank square on screen. */}
+      Ask AI
+    </Components.FormattingToolbar.Button>
+  );
 }
 
 /** What the surrounding UI can tell the user about unsaved work. */
@@ -79,6 +103,16 @@ export function BlockEditor({
   // BlockNote/Mantine otherwise picks its own theme from `prefers-color-scheme`, which renders
   // a dark editor inside a light shell whenever the OS is dark. Drive it from OUR theme.
   const theme = useThemeStore((s) => s.resolved);
+
+  /*
+   * Interactive AI is offered only where it earns its place: page bodies, not card
+   * descriptions. A card description is a sentence or two, and "summarize" is meaningless
+   * there — the dialog stays as spare as docs/planning/03 asks it to be.
+   */
+  const [aiTasks, setAiTasks] = useState<AiTask[] | null>(null);
+  const [aiRequest, setAiRequest] = useState<{ source: string; task?: string } | null>(null);
+  /** How to put an accepted result back into the document. Set when the request is opened. */
+  const applyRef = useRef<(text: string) => void>(() => undefined);
 
   // A draft only exists if the last session was torn down mid-edit, so it is by definition
   // newer than what reached the replica.
@@ -180,10 +214,103 @@ export function BlockEditor({
     timer.current = setTimeout(flush, SAVE_DEBOUNCE_MS);
   }, [flush]);
 
+  // A programmatic edit must mark the document dirty exactly as typing does, or an accepted
+  // AI result would sit in the editor unsaved. Via a ref because the AI callbacks above are
+  // declared before `handleChange` exists.
+  const handleChangeRef = useRef(handleChange);
+  handleChangeRef.current = handleChange;
+
   const compact = variant === "compact";
+  const aiEnabled = !compact;
+
+  // Asked once per session and cached in the module; an empty list means no engine, and every
+  // AI affordance simply never renders.
+  useEffect(() => {
+    if (!aiEnabled) return;
+    let cancelled = false;
+    void loadEngineStatus().then((status) => {
+      if (!cancelled) setAiTasks(status.available ? status.tasks : []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [aiEnabled]);
+
+  /** Toolbar entry: work on what the user highlighted, and put the result back in its place. */
+  const askAboutSelection = useCallback(() => {
+    const text = editor.getSelectedText().trim();
+    if (!text) return;
+    applyRef.current = (result: string) => {
+      /*
+       * insertInlineContent, NOT replaceBlocks. `getSelection()` returns the WHOLE blocks a
+       * selection touches — highlight one sentence of a paragraph and it hands back the entire
+       * paragraph — while `getSelectedText()` returns only the highlighted words. Replacing
+       * those blocks with a rewrite of the highlighted part therefore deletes the rest of the
+       * paragraph. Inline insertion replaces exactly the range the user selected, and the
+       * ProseMirror selection survives the panel taking DOM focus, so it is still the right
+       * range when they press Keep.
+       */
+      editor.focus();
+      editor.insertInlineContent(result);
+      handleChangeRef.current();
+    };
+    setAiRequest({ source: text });
+  }, [editor]);
+
+  /** Page entry: summarize the whole document, and put the summary at the top of it. */
+  const summarizePage = useCallback(() => {
+    // Markdown, not plain text: headings and lists are most of what makes a page summarizable,
+    // and flattening them throws that structure away before the model ever sees it.
+    const markdown = editor.blocksToMarkdownLossy(editor.document);
+    if (!markdown.trim()) return;
+    applyRef.current = (result: string) => {
+      const blocks = editor.tryParseMarkdownToBlocks(result);
+      const first = editor.document[0];
+      // An empty parse would be a no-op here, but `replaceBlocks` elsewhere treats it as
+      // "delete and insert nothing" — so never hand either of them an empty list.
+      if (blocks.length === 0 || !first) return;
+      editor.insertBlocks(blocks, first.id, "before");
+      handleChangeRef.current();
+    };
+    setAiRequest({ source: markdown, task: "summarize" });
+  }, [editor]);
+
+
+  const hasAi = aiEnabled && aiTasks !== null && aiTasks.length > 0;
+
+  // A stable component identity. FormattingToolbarController renders whatever it is handed as
+  // a COMPONENT, so a fresh inline arrow each render is a new type — React unmounts and remounts
+  // the toolbar, closing any dropdown or link popover that happened to be open.
+  const pageToolbar = useMemo(
+    () =>
+      function PageToolbar() {
+        return (
+          <FormattingToolbar>
+            {...getFormattingToolbarItems()}
+            {hasAi ? <AskAiButton key="ask-ai" onClick={askAboutSelection} /> : <></>}
+          </FormattingToolbar>
+        );
+      },
+    [hasAi, askAboutSelection],
+  );
 
   return (
     <div className={compact ? "tendto-compact-editor" : undefined}>
+      {hasAi ? (
+        // Quiet and right-aligned: a page you never want summarized should not have to look at
+        // a prominent button forever. It is absent entirely when no engine is configured.
+        <div className="mb-1 flex justify-end">
+          <button
+            type="button"
+            onClick={summarizePage}
+            data-testid="summarize-page"
+            className="rounded px-2 py-1 text-xs text-subtle hover:bg-hover hover:text-fg"
+          >
+            Summarize
+          </button>
+        </div>
+      ) : null}
+
       <BlockNoteView
         editor={editor}
         onChange={handleChange}
@@ -195,8 +322,9 @@ export function BlockEditor({
         tableHandles={!compact}
         // Compact swaps the floating selection toolbar for a persistent strip (below): in a
         // small field the formatting options should be visible without having to discover
-        // that selecting text reveals them.
-        formattingToolbar={!compact}
+        // that selecting text reveals them. The page variant also opts out of the DEFAULT
+        // toolbar, but only so it can render the same one plus "Ask AI" (below).
+        formattingToolbar={false}
       >
         {compact ? (
           // A curated set, not the default one. The defaults add four alignment buttons, a
@@ -211,8 +339,26 @@ export function BlockEditor({
             <BasicTextStyleButton basicTextStyle="code" key="code" />
             <CreateLinkButton key="link" />
           </FormattingToolbar>
-        ) : null}
+        ) : (
+          // The stock floating toolbar, item for item, with one addition. Rebuilding it from
+          // `getFormattingToolbarItems()` is what lets "Ask AI" sit beside the formatting
+          // controls instead of somewhere the user has to go looking for it.
+          <FormattingToolbarController formattingToolbar={pageToolbar} />
+        )}
       </BlockNoteView>
+
+      {aiRequest && aiTasks ? (
+        <AiPanel
+          source={aiRequest.source}
+          // A selection is offered only the rewriting tasks. Summarizing a highlighted sentence
+          // returns bullet points, and inline insertion would drop a bullet list into the middle
+          // of a paragraph — summarizing is what the page-level button is for.
+          tasks={aiRequest.task ? aiTasks : aiTasks.filter((task) => !task.whole_document)}
+          initialTask={aiRequest.task}
+          onApply={(text) => applyRef.current(text)}
+          onClose={() => setAiRequest(null)}
+        />
+      ) : null}
     </div>
   );
 }
