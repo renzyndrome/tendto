@@ -21,3 +21,4 @@ One line per memory. Full content in the linked files; keep this index lean.
 - [Comments & @mentions](comments-and-mentions.md) — the bucket decides who reads, the upload path who writes; inline mention tokens; why "(edited)" can't be derived from timestamps
 - [Calendar day view](calendar-day-view.md) — items are deadlines not meetings (one-slot blocks, no duration); the all-day row IS "no time"; which Google behaviours were dropped
 - [Replica timestamps & the midnight trap](replica-timestamps.md) — `updated_at` text changes across the sync round-trip (compare instants); time-of-day specs that break near midnight
+- [Backup & restore](backup-restore.md) — restoring Postgres is only half a restore: PowerSync's bucket storage must be wiped or replication is silently dead
