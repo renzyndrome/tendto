@@ -20,3 +20,4 @@ One line per memory. Full content in the linked files; keep this index lean.
 - [Presence](presence.md) — why polling beat a WebSocket here; UNLOGGED as a structural "this can never sync"; renders nothing when you're alone
 - [Comments & @mentions](comments-and-mentions.md) — the bucket decides who reads, the upload path who writes; inline mention tokens; why "(edited)" can't be derived from timestamps
 - [Calendar day view](calendar-day-view.md) — items are deadlines not meetings (one-slot blocks, no duration); the all-day row IS "no time"; which Google behaviours were dropped
+- [Replica timestamps & the midnight trap](replica-timestamps.md) — `updated_at` text changes across the sync round-trip (compare instants); time-of-day specs that break near midnight

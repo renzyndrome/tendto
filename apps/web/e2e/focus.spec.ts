@@ -151,6 +151,19 @@ test.describe("focus mode", () => {
   });
 
   test("a finished session is recorded and survives a reload", async ({ authedPage: page }) => {
+    /*
+     * Pin the date to midday before anything is seeded.
+     *
+     * A session files under the day it STARTED (`local_date = toDateKey(startedAt)` in
+     * lib/focus/sessions.ts), and the phase seeded below started 25 minutes ago. Run for real
+     * in the first 25 minutes after midnight, that start lands on YESTERDAY while the "Today"
+     * stat reads today, so this test failed nightly for a reason the app is right about.
+     * `setFixedTime` freezes Date.now() only — timers still run, so the app behaves normally.
+     */
+    const midday = new Date();
+    midday.setHours(12, 0, 0, 0);
+    await page.clock.setFixedTime(midday);
+
     await page.getByRole("button", { name: "Focus" }).click();
     // Nothing to show before the first session — and no fake zeroes either.
     await expect(page.getByTestId("focus-stats")).toContainText("your garden starts here");
