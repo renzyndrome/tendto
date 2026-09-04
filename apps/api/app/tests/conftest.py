@@ -20,6 +20,7 @@ from app.auth import CurrentUser, get_current_user
 from app.db import get_session
 from app.main import app
 from app.models import Base
+from app.models.rls import rls_statements
 from app.tests.support import (
     AUTH_USER_DDL,
     TEST_USER_ID,
@@ -41,6 +42,10 @@ async def _create_database() -> None:
         await conn.run_sync(Base.metadata.create_all)
         # better-auth's table isn't in Base.metadata — see AUTH_USER_DDL.
         await conn.execute(text(AUTH_USER_DDL))
+        # The RLS backstop ships in a migration, but this schema is built with `create_all`, so
+        # apply the same statements here. Same source, so test_rls.py exercises what ships.
+        for statement in rls_statements():
+            await conn.execute(text(statement))
     yield
 
 

@@ -22,3 +22,4 @@ One line per memory. Full content in the linked files; keep this index lean.
 - [Calendar day view](calendar-day-view.md) — items are deadlines not meetings (one-slot blocks, no duration); the all-day row IS "no time"; which Google behaviours were dropped
 - [Replica timestamps & the midnight trap](replica-timestamps.md) — `updated_at` text changes across the sync round-trip (compare instants); time-of-day specs that break near midnight
 - [Backup & restore](backup-restore.md) — restoring Postgres is only half a restore: PowerSync's bucket storage must be wiped or replication is silently dead
+- [RLS backstop](rls-backstop.md) — installed but NOT forced (the owner bypasses); the ordered steps to make it bind, and the policy-recursion trap
