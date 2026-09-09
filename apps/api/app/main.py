@@ -1,10 +1,22 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.routers import ai, bootstrap, health, members, presence, sync, workspaces
+from app.startup_checks import assert_single_worker
 
-app = FastAPI(title="TendTo API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    # Fails the boot, not a request: a configuration that quietly multiplies the AI spend limit
+    # must be caught before anyone can reach the endpoint it protects. See startup_checks.
+    assert_single_worker()
+    yield
+
+
+app = FastAPI(title="TendTo API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

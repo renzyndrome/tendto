@@ -63,13 +63,29 @@ const notifications = (page: Page) =>
   page.evaluate(() => (window as unknown as { __notifications: { title: string; body?: string }[] }).__notifications);
 
 /** Put the schedule in the past or the future relative to now. */
+/**
+ * Seed the stored schedule at an offset from now.
+ *
+ * The offset is CLAMPED inside today, because the app stores a time OF DAY and compares it to
+ * the current time of day. An offset that crosses midnight therefore means the opposite of what
+ * the caller asked: "two hours from now" run at 23:46 becomes 01:46, which the app correctly
+ * reads as already past — and "five minutes ago" run at 00:02 becomes 23:57, which it correctly
+ * reads as still to come. Both made this suite fail only when it ran near midnight. The app
+ * behaviour is right; the arithmetic was the bug.
+ */
 async function scheduleAt(page: Page, offsetMinutes: number, enabled = true) {
   await page.addInitScript(
     ({ offset, on }) => {
-      const at = new Date(Date.now() + offset * 60_000);
+      const now = new Date();
+      const at = new Date(now.getTime() + offset * 60_000);
+      const sameDay = at.toDateString() === now.toDateString();
+      // Clamped to the last/first minute of today, so "later than now" and "earlier than now"
+      // stay true. Only the final minute of a day is still ambiguous.
+      const hour = sameDay ? at.getHours() : offset > 0 ? 23 : 0;
+      const minute = sameDay ? at.getMinutes() : offset > 0 ? 59 : 0;
       localStorage.setItem(
         "tendto:recap-schedule",
-        JSON.stringify({ enabled: on, hour: at.getHours(), minute: at.getMinutes() }),
+        JSON.stringify({ enabled: on, hour, minute }),
       );
       localStorage.removeItem("tendto:recap-delivered");
     },

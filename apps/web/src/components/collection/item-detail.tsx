@@ -16,6 +16,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useExternalEdit } from "../../lib/blocks/external-edit";
 import { itemOwner, loadBlocks, type BlockRow } from "../../lib/blocks/serialize";
 import { clearDraft, draftKey, readDraft, writeDraft } from "../../lib/drafts";
 import { deleteItem, parseProperties, patchItem, type Column, type ItemRow } from "../../lib/items/mutations";
@@ -24,6 +25,7 @@ import { Spinner } from "../ui/spinner";
 import { CommentSection } from "../comments/comment-section";
 import { PresenceBar } from "../presence/presence-bar";
 import { BlockEditor, type SaveState } from "../editor/block-editor";
+import { UpdatedElsewhere } from "../editor/updated-elsewhere";
 import { AssigneePicker } from "./views/assignee-picker";
 import { DuePicker } from "./views/due-picker";
 
@@ -48,6 +50,9 @@ export function ItemDetail({ row, columns, workspaceId, onClose, onDeleted }: It
   // A stashed title only exists if the last session was torn down before the write landed.
   const [title, setTitle] = useState(() => readDraft<string>(titleDraftKey(rowId)) ?? props.title);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  // Bumped to re-read the description after an edit arrived from another device.
+  const [revision, setRevision] = useState(0);
+  const external = useExternalEdit(itemOwner(rowId));
   const others = usePresence(row.workspace_id, { kind: "item", id: rowId });
 
   /*
@@ -125,15 +130,17 @@ export function ItemDetail({ row, columns, workspaceId, onClose, onDeleted }: It
   }, [rowId]);
 
   // One-shot read, like the page editor — a reactive query would fight BlockNote's state.
+  // `revision` re-runs it when the user asks for the version another device wrote.
   useEffect(() => {
     let cancelled = false;
+    setBlocks(null);
     void loadBlocks(itemOwner(row.id)).then((loaded) => {
       if (!cancelled) setBlocks(loaded);
     });
     return () => {
       cancelled = true;
     };
-  }, [row.id]);
+  }, [row.id, revision]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -252,13 +259,17 @@ export function ItemDetail({ row, columns, workspaceId, onClose, onDeleted }: It
                 {saveState === "saving" ? "Saving…" : "Saved"}
               </span>
             </div>
+            {external.changed ? (
+              <UpdatedElsewhere variant="compact" onReload={() => setRevision((n) => n + 1)} />
+            ) : null}
             {blocks === null ? (
               <Spinner label="Loading…" />
             ) : (
-              // key: a fresh editor per item, so opening another card never shows stale content.
+              // key: a fresh editor per item (so opening another card never shows stale
+              // content) and per reload (so re-hydrated content replaces BlockNote's copy).
               <div data-testid="detail-description">
                 <BlockEditor
-                  key={row.id}
+                  key={`${row.id}:${revision}`}
                   owner={itemOwner(row.id)}
                   workspaceId={workspaceId}
                   initialBlocks={blocks}

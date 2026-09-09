@@ -14,6 +14,7 @@
 import type { Block, PartialBlock } from "@blocknote/core";
 
 import { db } from "../powersync/client";
+import { fingerprintRows, ownerKeyOf, publishSelfWrite } from "./self-writes";
 
 /** Which thing a set of blocks belongs to. */
 export type BlockOwner = { kind: "page"; id: string } | { kind: "item"; id: string };
@@ -49,9 +50,14 @@ interface StoredBlockContent {
 /**
  * Load an owner's blocks once, ordered by position. This is a ONE-SHOT read, not a reactive
  * subscription: an open editor must not be re-hydrated from the replica or it would fight
- * BlockNote's own document state (live external edits to the open page are Phase 2).
+ * BlockNote's own document state. An edit that arrives from another device is therefore
+ * reported rather than applied — see `external-edit.ts` — and re-reading is the user's call.
  */
 export async function loadBlocks(owner: BlockOwner): Promise<BlockRow[]> {
+  // Never read behind our own pending write. A re-hydrate (the "updated elsewhere" reload)
+  // happens right after the outgoing editor flushes, so without this the read can miss the
+  // very edit that flush is saving and the user watches their last sentence disappear.
+  await (inFlight.get(`${owner.kind}:${owner.id}`) ?? Promise.resolve()).catch(() => undefined);
   return db.getAll<BlockRow>(
     `SELECT * FROM blocks WHERE ${ownerColumn(owner)} = ? ORDER BY position`,
     [owner.id],
@@ -168,4 +174,15 @@ async function writeBlocks(
       await tx.execute(`DELETE FROM blocks WHERE ${column} = ?`, [owner.id]);
     }
   });
+
+  /*
+   * Tell the "updated elsewhere" watcher what this device just wrote. Every row above carries
+   * `now`, and the DELETE removed the rest, so these pairs ARE the owner's complete state as
+   * of this commit — anything the replica holds beyond them came from another device.
+   * Published here rather than by the caller so it cannot drift from the write itself.
+   */
+  publishSelfWrite(
+    ownerKeyOf(owner.kind, owner.id),
+    fingerprintRows(ids.map((id) => ({ id, updated_at: now }))),
+  );
 }

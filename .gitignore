@@ -30,3 +30,9 @@ apps/web/dist/
 *.log
 .idea/
 .vscode/
+
+# Database dumps — real user content; never commit these.
+backups/
+
+# Knowledge-graph build output (regenerate with /graphify); not source.
+graphify-out/

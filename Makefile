@@ -1,4 +1,4 @@
-.PHONY: dev dev-down db db-down api auth web test fmt e2e e2e-stack
+.PHONY: dev dev-down db db-down api auth web test fmt e2e e2e-stack backup restore
 
 # Bun installs to ~/.bun/bin, which make's non-login shell does not pick up.
 export PATH := $(HOME)/.bun/bin:$(PATH)
@@ -37,3 +37,9 @@ e2e-stack:     ## boot the backend stack for E2E (Postgres+Mongo+PowerSync+auth+
 
 e2e: e2e-stack ## boot the stack, then run the Playwright E2E suite (Vite auto-starts)
 	cd apps/web && npm run e2e
+
+backup:        ## dump the whole database (app + auth tables) to backups/
+	bash scripts/backup.sh
+
+restore:       ## restore a dump into a NAMED scratch db: make restore FILE=... TARGET=...
+	bash scripts/restore.sh "$(FILE)" "$(TARGET)" $(REPLACE)

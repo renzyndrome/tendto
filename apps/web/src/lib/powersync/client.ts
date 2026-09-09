@@ -11,6 +11,7 @@ import {
 
 import { apiFetch } from "../api/client";
 import { getAuthToken } from "../auth/token";
+import { setupFts, teardownFts } from "./fts";
 import { AppSchema } from "./schema";
 
 export const db = new PowerSyncDatabase({
@@ -58,8 +59,59 @@ class Connector implements PowerSyncBackendConnector {
   }
 }
 
+/**
+ * The live connector, kept so a reconnect can reuse it. Null while signed out — which is also
+ * what stops the nudges below from reviving a signed-out session.
+ */
+let connector: Connector | null = null;
+let reconnecting = false;
+let nudgesInstalled = false;
+
+/**
+ * Re-open the sync stream if it is closed.
+ *
+ * PowerSync retries on its own, but with a backoff that grows while a laptop is shut: come
+ * back the next morning and the app can sit disconnected for the remainder of a long delay,
+ * looking like a bug ("my phone's edits aren't here"). The events below say "the world just
+ * changed" far more precisely than any timer, so we ask for an attempt right then.
+ *
+ * `force` exists because `db.connected` is not trustworthy as a reason to do nothing: a socket
+ * dropped by a sleeping network can still be reported as connected until something writes to
+ * it. So a genuine `online` transition always re-dials, while the far more frequent
+ * tab-focus check defers to the flag and usually costs nothing.
+ */
+async function ensureConnected(force = false): Promise<void> {
+  if (!connector || reconnecting) return;
+  if (!force && db.connected) return;
+  reconnecting = true;
+  try {
+    await db.connect(connector);
+  } catch (err) {
+    // Still offline, or the auth service is down. PowerSync keeps its own retry going.
+    console.error("Reconnect attempt failed; PowerSync will keep retrying", err);
+  } finally {
+    reconnecting = false;
+  }
+}
+
+function installReconnectNudges(): void {
+  if (nudgesInstalled) return;
+  nudgesInstalled = true;
+  // Coming back onto a network, and coming back to the tab — a phone wakes with the tab
+  // already "online", so visibility is the one that catches a backgrounded PWA.
+  window.addEventListener("online", () => void ensureConnected(true));
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void ensureConnected();
+  });
+}
+
 export async function connectDb(): Promise<void> {
-  await db.connect(new Connector());
+  // Build the search index before opening the stream, so the triggers are in place for the
+  // rows the first sync applies. Non-fatal: search falls back to LIKE scans if it fails.
+  await setupFts(db);
+  connector = new Connector();
+  installReconnectNudges();
+  await db.connect(connector);
 }
 
 /**
@@ -70,6 +122,12 @@ export async function connectDb(): Promise<void> {
  * removed by a bucket update, which a signed-out client never receives.
  */
 export async function disconnectAndClearDb(): Promise<void> {
+  // Drop the connector first: it is what the reconnect nudges check, so a stray "online" event
+  // during teardown must not re-open the stream for the account that is signing out.
+  connector = null;
+  // The search index is a copy of this account's titles and block text — clear it too, and
+  // before the replica, so its triggers are gone before the rows they watch are removed.
+  await teardownFts(db);
   try {
     await db.disconnectAndClear();
   } catch (err) {
