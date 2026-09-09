@@ -13,7 +13,7 @@
  * If FTS5 is unavailable or setup fails, `isFtsReady()` stays false and search falls back to
  * the original LIKE scans (see `../search.ts`).
  */
-import type { AbstractPowerSyncDatabase } from "@powersync/web";
+import type { CommonPowerSyncDatabase } from "@powersync/common";
 
 let ftsReady = false;
 
@@ -24,15 +24,22 @@ export function isFtsReady(): boolean {
 
 /**
  * Plain text of a block's `content` JSON, in pure SQL: `json_tree` walks the inline-content
- * tree recursively and `key = 'text'` picks out the text nodes — the SQL twin of
- * `blockRowToText()`. `expr` is an expression yielding the row's `data` JSON.
+ * tree recursively and picks out the text — the SQL twin of `blockRowToText()`. `expr` is an
+ * expression yielding the row's `data` JSON.
+ *
+ * Two kinds of node contribute. Ordinary text nodes carry their words under the key `text`.
+ * A `pageLink` node has NO text of its own — its label lives in `props.title` — so a page
+ * found only by the name of something it links to would otherwise be unsearchable. Matching
+ * on the full path (`…props.title`) rather than the bare key keeps every other `title`
+ * property out of the index.
  */
 function blockTextSql(expr: string): string {
   return (
     `CASE WHEN json_valid(json_extract(${expr}, '$.content')) THEN ` +
     `(SELECT coalesce(group_concat(value, ' '), '') ` +
     `FROM json_tree(json_extract(${expr}, '$.content')) ` +
-    `WHERE json_tree.key = 'text' AND json_tree.type = 'text') ` +
+    `WHERE json_tree.type = 'text' AND (` +
+    `json_tree.key = 'text' OR json_tree.fullkey LIKE '%.props.title')) ` +
     `ELSE '' END`
   );
 }
@@ -135,7 +142,7 @@ function setupStatements(spec: FtsTableSpec): string[] {
  * Build (or heal) the FTS index. Call once at boot. Failure is non-fatal by design: search
  * silently stays on the LIKE fallback rather than the app losing search altogether.
  */
-export async function setupFts(db: AbstractPowerSyncDatabase): Promise<boolean> {
+export async function setupFts(db: CommonPowerSyncDatabase): Promise<boolean> {
   try {
     for (const spec of SPECS) {
       for (const sql of setupStatements(spec)) {
@@ -156,7 +163,7 @@ export async function setupFts(db: AbstractPowerSyncDatabase): Promise<boolean> 
  * a shared device. Triggers are dropped BEFORE their tables — a trigger left pointing at a
  * missing table would abort the very writes that apply the next user's sync stream.
  */
-export async function teardownFts(db: AbstractPowerSyncDatabase): Promise<void> {
+export async function teardownFts(db: CommonPowerSyncDatabase): Promise<void> {
   ftsReady = false;
   for (const spec of SPECS) {
     const fts = `fts_${spec.table}`;
@@ -184,4 +191,28 @@ export function toPrefixQuery(input: string): string | null {
     .filter((term) => term.length > 0);
   if (terms.length === 0) return null;
   return terms.map((term) => `"${term}"*`).join(" ");
+}
+
+/**
+ * Turn a phrase into an FTS5 phrase query (`"quarterly review"`), for finding a page title
+ * written out in someone else's prose. Quotes are stripped so the phrase cannot smuggle in FTS
+ * operators. Returns null when nothing searchable remains.
+ */
+export function toPhraseQuery(input: string): string | null {
+  const phrase = input.replaceAll('"', "").trim();
+  if (!phrase) return null;
+  return `"${phrase}"`;
+}
+
+/**
+ * Turn a list of terms into an FTS5 OR query (`"budget" OR "travel"`) — a "match any of these"
+ * used by the related-pages and ask-my-notes retrieval, where requiring every term would
+ * usually return nothing. Returns null when no term survives.
+ */
+export function toOrQuery(terms: readonly string[]): string | null {
+  const cleaned = terms
+    .map((term) => term.replaceAll('"', "").trim())
+    .filter((term) => term.length > 0);
+  if (cleaned.length === 0) return null;
+  return cleaned.map((term) => `"${term}"`).join(" OR ");
 }
