@@ -33,3 +33,6 @@ apps/web/dist/
 
 # Database dumps — real user content; never commit these.
 backups/
+
+# Knowledge-graph build output (regenerate with /graphify); not source.
+graphify-out/

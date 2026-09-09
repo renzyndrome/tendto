@@ -1,6 +1,6 @@
 ---
 name: current-state
-description: Where the build is as of 2026-08-21 — what shipped on feat/theming-sharing-reminders, what is deliberately unfinished, and the traps a new session should read first
+description: Where the build is as of 2026-09-09 — Phase 3 is closed (PR #3); what is deliberately unfinished, and the traps a new session should read first
 metadata:
   type: project
 ---
@@ -18,11 +18,15 @@ BlockNote traps that cost the most time.
 If the work touches a **synced table**, read [[comments-and-mentions]] (bucket vs permission) and
 run the `sync-rules` skill — picking the wrong bucket leaks data irreversibly.
 If it touches **AI**, read [[ai-engines]] before anything else.
+If it touches **timestamps or a time-of-day test**, read [[replica-timestamps]] first.
+If it touches **restores, PowerSync repointing, or RLS**, read [[backup-restore]] and
+[[rls-backstop]] — both describe failures that leave the app looking healthy while it is not.
 
-## Shipped on `feat/theming-sharing-reminders`
+## Shipped
 
-The branch name is two features stale; it now carries everything below. **Phases 0–2 are closed
-and Phase 3's headliners are in.**
+**Phases 0–3 are closed.** Everything below landed on `feat/theming-sharing-reminders` (merged),
+and the Phase 3 remainder on `feat/fts-search-and-sync-hardening` (PR #3, open as of 2026-09-09)
+— see "Phase 3 remainder" further down. Phase 4 (native shells) is untouched by design.
 
 - **Dev stack**: `make dev` / `make dev-down`; the better-auth CLI's TTY hang is worked around in
   `scripts/e2e-stack.sh`.
@@ -72,9 +76,11 @@ real migration of all four, not a second lockfile.
 - **The e2e suite is Chromium-only** (`playwright.config.ts`), but Renzy uses Firefox daily. A
   Firefox-only rendering bug (its focus outline on `contenteditable`) shipped and was only found
   by driving Firefox by hand. Consider adding a Firefox project, at least a smoke one.
-- **The AI spend guards are in-process** (`app/ai/limits.py`) and **fail OPEN** under
-  `--workers N` — each worker would get its own allowance. Presence's in-memory registry has the
-  same single-worker assumption but fails closed. Revisit both before strangers can reach the API.
+- **The AI spend guards are in-process** (`app/ai/limits.py`) and would **fail OPEN** under
+  `--workers N` — each worker gets its own allowance. Presence's in-memory registry shards the
+  same way but fails closed. The API now REFUSES to boot with several workers unless
+  `TENDTO_ALLOW_MULTIPLE_WORKERS=1` (`app/startup_checks.py`), so the failure is loud rather than
+  silent — but a shared store is still the real fix before strangers arrive.
 - **`codex` as an AI CLI is UNVERIFIED** — no install to test against, so its argv is a guess and
   it does not stream. `claude` and any OpenAI-compatible API are the tested paths.
 - **The CLI engine inherits the operator's global Claude Code config**, so SessionStart hooks fire
@@ -89,23 +95,52 @@ real migration of all four, not a second lockfile.
 - **Notifications are opt-in** and need both the browser grant and the in-app switch; they read
   "Blocked" in headless Chromium, which is correct.
 - `eslint` has no flat config, so `npm run lint` fails repo-wide (pre-existing; `make fmt`
-  tolerates it with `|| true`).
+  tolerates it with `|| true`). `ruff check app/` likewise reports ~37 pre-existing errors in the
+  API; new work is expected to be clean, the backlog is not.
+- **The dev box runs out of memory on a one-shot `make e2e`** (~2 GB free). The suite was killed
+  mid-run and took the backend stack with it. Run it in batches of 8-10 spec files instead.
+
+## Phase 3 remainder — done (PR #3)
+
+All four shipped on `feat/fts-search-and-sync-hardening`. Each carries a trap worth knowing:
+
+- **Instant search** is SQLite FTS5 now, not `LIKE`. `fts_pages`/`fts_items`/`fts_blocks` are
+  kept fresh by triggers on PowerSync's internal `ps_data__*` tables, so rows arriving from the
+  sync stream are indexed with no JS bookkeeping. A trigger body that throws would abort sync
+  apply, so every nested-JSON read in one is guarded. The index is dropped on sign-out.
+- **Sync hardening** — an open editor now says "Updated on another device" and offers Reload,
+  rather than silently overwriting. It is a notice, never a merge. Detection compares the SET of
+  `(id, updated_at)` pairs, and compares them as INSTANTS: the text is not stable across the sync
+  round-trip ([[replica-timestamps]]). PowerSync is also re-dialled on `online` and tab focus.
+- **Backup/restore** — `make backup` / `make restore`, `docs/backup-restore.md`, drill actually
+  run. Restoring Postgres is only half a restore ([[backup-restore]]).
+- **RLS** — migration `0008_rls`, enabled but deliberately NOT forced ([[rls-backstop]]). Do not
+  add FORCE without doing the three steps in the documented order; it kills sync.
+
+Plus a startup guard: the API refuses `--workers N>1` unless
+`TENDTO_ALLOW_MULTIPLE_WORKERS=1`, because the AI spend limits shard per worker and fail OPEN.
 
 ## What's next on the roadmap
 
-Phase 3's remainder, roughly in the order they'd hurt least to skip: **SQLite FTS** (search is a
-`LIKE` match today), **sync hardening** ("updated elsewhere" notices, long-offline reconnects),
-the **backup/restore drill**, **RLS hardening**, **pgvector** semantic search (AI-4), and
-**Stripe**. Phase 4 (native shells) is untouched by design — see [[desktop-shell-plan]].
+**Stripe** billing and **pgvector** semantic search (AI-4), both postponed by Renzy on
+2026-09-03 — pgvector needs a paid embeddings API the CLI engine cannot provide, and FTS covers
+the search need. Then Phase 4 (native shells), untouched by design — see [[desktop-shell-plan]].
+
+Still open from the go-public list: transactional **email** needs a real Resend key, and the AI
+spend guards want a shared store rather than the boot-time refusal above.
 
 ## Verifying a change
 
-`make dev` (stack + Vite), `make test` (153 API tests + web typecheck), and
-`make e2e` (99 Playwright specs — the per-feature done gate). **Two specs SKIP when an AI engine
+`make dev` (stack + Vite), `make test` (166 API tests + web typecheck), and
+`make e2e` (100 Playwright tests across 32 spec files — the per-feature done gate; run it in
+batches, see above). **Two specs SKIP when an AI engine
 is configured** (`ai-summary`, `recap`) — that is correct, not a failure. To exercise them,
-blank `AI_CLI` in `.env` and restart the API. `offline.spec.ts` is occasionally
-flaky under load — it is a real cross-device sync timeout, passes on retry, and is unrelated to
-recent work.
+blank `AI_CLI` in `.env` and restart the API.
+
+`offline.spec.ts` was long believed flaky. It ran 5/5 clean with no retries on 2026-09-04, after
+PowerSync gained a reconnect nudge on `online`/tab-focus. The flakes actually chased down that
+week were something else: two near-midnight date bugs ([[replica-timestamps]]) and the box
+running out of memory. **Before blaming a spec, check the clock and `free -g`.**
 
 **Restart the API after touching `TABLE_MODELS`, `DATETIME_COLUMNS` or anything else read at
 import**: the e2e stack runs uvicorn without `--reload`. **Restart the PowerSync container after
