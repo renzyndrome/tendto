@@ -19,6 +19,7 @@ import { CommentSection } from "../comments/comment-section";
 import { PresenceBar } from "../presence/presence-bar";
 import { Spinner } from "../ui/spinner";
 import { BlockEditor } from "./block-editor";
+import { PageConnections } from "./page-connections";
 import { UpdatedElsewhere } from "./updated-elsewhere";
 
 const TITLE_DEBOUNCE_MS = 400;
@@ -120,6 +121,9 @@ function PageEditorInner({
         workspaceId={workspaceId}
         initialBlocks={initialBlocks}
       />
+      {/* What points here, before the discussion about it. Renders nothing when nothing does. */}
+      <PageConnections workspaceId={pageWorkspaceId ?? workspaceId} pageId={pageId} />
+
       {/* Below the body, in the same column: a page's discussion belongs after the page, not in
           a side panel competing with it for attention. */}
       <div className="mt-10 border-t border-line pt-5">

@@ -57,5 +57,27 @@ empty editor; typing there inserts blocks whose `page_id` Postgres no longer has
   type is parameterised by its schema, and naming the concrete type dragged the schema into every
   module that saves blocks.
 
+## Backlinks and unlinked mentions (phase B)
+
+`page_links(workspace_id, source_page_id, target_page_id, block_id)` is a DERIVED, device-local
+table in `apps/web/src/lib/powersync/page-links.ts` — the twin of the FTS index, built by triggers
+on `ps_data__blocks`, rebuilt at boot, dropped on sign-out. No migration, no sync rule, nothing
+for another device to reconcile: every row is recomputable from blocks the replica already holds.
+Item-description blocks are skipped (`page_id IS NULL`), since a backlink must come FROM a page.
+
+- The update trigger replaces a block's links wholesale rather than diffing them. A block never
+  has more than a handful, and "delete then insert" cannot drift.
+- **Neither source can be watched with `useQuery`.** PowerSync resolves watched tables from the
+  statement's read plan: `page_links` is written by triggers rather than by the sync stream, and
+  `fts_blocks` is an FTS5 virtual table with no root page to report. Both only ever change as a
+  side effect of a write to `blocks` or `pages`, so `usePageConnections` subscribes to those two
+  with `db.onChange` instead.
+- The page title is read inside the hook, not passed in as a prop. It is what unlinked mentions
+  are searched for, so a rename has to change the answer.
+- Backlinks and mentions are deliberately two lists. A link is a decision somebody made; a
+  mention is only a hint that they might have meant to. Obsidian splits them for the same reason.
+- The panel renders NOTHING when both are empty, and stays collapsed otherwise. An always-open
+  panel turns every page into a page about its own metadata.
+
 Related: [[phase-1-build]] (block ids are BlockNote strings), [[theming]] (the chip is set apart
 by a pill and an underline because `accent` is the same shade as body text).

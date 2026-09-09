@@ -49,6 +49,7 @@ FastAPI `:18000` · Vite `:15173` (started by Playwright). See `scripts/e2e-stac
 | 3 | `export.spec.ts` | Export downloads JSON + Markdown; JSON contains the created content |
 | 3 | `ai-summary.spec.ts` | authed `POST /ai/daily-summary` returns a non-empty summary (offline fallback) |
 | 4 | `page-links.spec.ts` | `[[` links a page mid-sentence · the chip follows its target and tracks a rename · a link to a deleted page goes inert · a lone `[` is left alone |
+| 4 | `backlinks.spec.ts` | a page lists who links to it and forgets a link that is deleted · a page that writes the title without linking it shows as a mention |
 | 4 | `desktop-auth.spec.ts` | the browser app never receives the session token · the desktop shell does, and it authenticates the API |
 | 4 | `e2e-pwa/pwa.spec.ts` | service worker precaches the shell **and the SQLite wasm** · manifest is installable (192 + 512 + maskable icons, all served) · reload with the network off still renders |
 
