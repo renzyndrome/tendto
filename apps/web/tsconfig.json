@@ -12,7 +12,16 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": ["vite/client"]
+    "types": ["vite/client", "vite-plugin-pwa/client"],
+
+    /* The platform seam. Vite swaps this for platform.desktop.ts in `--mode desktop`; tsc always
+       checks against the web implementation, and checks the desktop one on its own because it
+       also lives under src/. Both are typed against PowerSyncPlatform, which is what keeps them
+       from drifting. */
+    "baseUrl": ".",
+    "paths": {
+      "@powersync-platform": ["./src/lib/powersync/platform.web.ts"]
+    }
   },
   "include": ["src"]
 }

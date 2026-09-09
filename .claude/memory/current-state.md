@@ -154,3 +154,28 @@ pytest uses fake providers. Where a spec must hit the real endpoint, it guards w
 `aiEngineConfigured()` from `e2e/helpers/api.ts`, which reads `/ai/status` and costs nothing —
 the old probe called the recap itself, so the very check meant to avoid spending the
 subscription spent one call of it.
+
+## Phase 4 (2026-09-09) — installable PWA + Tauri desktop shell
+
+Branch `feat/fts-search-and-sync-hardening`, on top of the Phase 3 remainder.
+
+- **PWA finished.** Icons generated from `apps/web/public/logo.svg` and committed, manifest fields,
+  Apple/theme metas, and our own SW registration (`src/lib/pwa.ts`) with an hourly update check.
+  New gate: `make e2e-pwa` (own config; the main suite runs `vite dev`, which has no SW).
+  See [[pwa-install]].
+- **PowerSync upgraded to 2.x**, pinned as a set to match the alpha Tauri plugin. See
+  [[powersync-version-alignment]]. All 99 E2E passed on the new HTTP-streaming default.
+- **`apps/desktop` exists** — Tauri 2, Rust-owned SQLite via `tauri-plugin-powersync`, Rust
+  connector, tray + close-to-tray + single instance, native notifications. See [[desktop-shell-plan]]
+  and `docs/desktop.md`.
+- **Auth changed for the shell**: origin allowlists became lists in all three servers, and the
+  desktop uses better-auth's `bearer()` plugin. See [[desktop-auth]].
+- **New platform seam**: `@powersync-platform` is aliased per Vite mode to `platform.web.ts` or
+  `platform.desktop.ts`, both typed against `PowerSyncPlatform`. The browser bundle carries no
+  Tauri code and the desktop bundle carries no service worker — both checked by grepping `dist/`.
+
+**New gates:** `make e2e-pwa` and `make desktop-test`. `make desktop-deps` prints the one-time
+system setup; it needs a `sudo apt` line, so it is a manual step.
+
+**Still open:** the WebKitGTK editor spike (the go/no-go for the Linux shell), `make desktop-build`
+(no release bundle produced yet), plus Stripe and pgvector from earlier phases.

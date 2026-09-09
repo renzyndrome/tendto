@@ -7,13 +7,22 @@ TendTo is local-first, the only honest test drives the whole loop: browser → l
 ## Run it
 
 ```bash
-make e2e        # boots the backend stack, then runs the Playwright suite (Vite auto-starts)
+make e2e        # boots the backend stack, runs the main suite, then the PWA suite
+make e2e-pwa    # PWA suite only — no backend needed
 ```
 
-`make e2e` runs `scripts/e2e-stack.sh` (idempotent) then `apps/web` → `npm run e2e`. The suite is
-Chromium-only — PowerSync's wasm SQLite persists to OPFS, which needs a Chromium secure context
-(`localhost` qualifies). Report/artifacts (trace, video, screenshots on failure) land in
-`apps/web/playwright-report/` and `apps/web/e2e/.artifacts/`.
+`make e2e` runs `scripts/e2e-stack.sh` (idempotent) then `apps/web` → `npm run e2e`, and finishes
+with `make e2e-pwa`. The suite is Chromium-only — PowerSync's wasm SQLite persists to OPFS, which
+needs a Chromium secure context (`localhost` qualifies). Report/artifacts (trace, video,
+screenshots on failure) land in `apps/web/playwright-report/` and `apps/web/e2e/.artifacts/`.
+
+### Why the PWA suite is a separate config
+`playwright.pwa.config.ts` (specs in `apps/web/e2e-pwa/`) exists because the main suite
+**structurally cannot** cover the installable PWA: it runs `npm run dev`, and the service worker
+and web manifest only exist after `vite build`. So the PWA config builds and serves with `vite
+preview` on `:15174` instead, and never reuses an existing server — a stale `dist/` would silently
+test the previous manifest. It needs no backend: a fresh browser context has no session, so the
+app settles on the sign-in screen, which is exactly the shell an offline cold boot must render.
 
 ### First-time prerequisites
 - **Bun** (for the auth service): `curl -fsSL https://bun.sh/install | bash`, then
@@ -39,6 +48,8 @@ FastAPI `:18000` · Vite `:15173` (started by Playwright). See `scripts/e2e-stac
 | 3 | `search.spec.ts` | ⌘/Ctrl-K finds a block by content and navigates to its page |
 | 3 | `export.spec.ts` | Export downloads JSON + Markdown; JSON contains the created content |
 | 3 | `ai-summary.spec.ts` | authed `POST /ai/daily-summary` returns a non-empty summary (offline fallback) |
+| 4 | `desktop-auth.spec.ts` | the browser app never receives the session token · the desktop shell does, and it authenticates the API |
+| 4 | `e2e-pwa/pwa.spec.ts` | service worker precaches the shell **and the SQLite wasm** · manifest is installable (192 + 512 + maskable icons, all served) · reload with the network off still renders |
 
 ## How the harness works
 - `e2e/global.setup.ts` — a health gate: fails fast with a clear message if the stack is down.

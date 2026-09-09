@@ -20,7 +20,8 @@ app = FastAPI(title="TendTo API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[get_settings().web_url],  # WEB_URL env; Vite dev default
+    # WEB_URL plus WEB_ORIGINS; includes the desktop shell's webview — see Settings.cors_origins.
+    allow_origins=get_settings().cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

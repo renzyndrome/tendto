@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="TendTo">
+  <!-- A "T" whose stem turns into a check: tend to it, tick it off. Both check strokes run at
+       a true 45 degrees, and the upstroke is twice the downstroke, so it reads as a tick
+       rather than an arrowhead.
+       Ink spans x 112-400 and y 141-371 — centred on (256, 256) and inside the central 80%
+       (52-460), so an Android circular mask never clips it. -->
+  <rect width="512" height="512" fill="#ffffff"/>
+  <rect x="112" y="141" width="288" height="48" rx="24" fill="#171717"/>
+  <path d="M256 165 L256 307 L296 347 L376 267" fill="none" stroke="#171717"
+        stroke-width="48" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

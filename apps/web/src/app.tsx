@@ -53,8 +53,12 @@ function AuthedApp() {
     async function boot() {
       try {
         // Best-effort: start the sync stream. A connect failure must not block rendering —
-        // PowerSync retries internally and the UI still reads local data.
-        void connectDb().catch(() => undefined);
+        // PowerSync retries internally and the UI still reads local data. It is logged rather
+        // than swallowed: a connect that never succeeds looks exactly like being offline, and
+        // silence here once hid a real desktop wiring bug.
+        void connectDb().catch((err: unknown) => {
+          console.error("Could not open the sync stream", err);
+        });
 
         const { activeId, knownIds } = await bootstrapWorkspaces();
         if (cancelled) return;

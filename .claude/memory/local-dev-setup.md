@@ -63,3 +63,10 @@ Recorded 2026-08-04 while getting the stack running from scratch. The traps, not
 
 Unrelated-but-adjacent: `apps/web` has BOTH `package-lock.json` (tracked) and `pnpm-lock.yaml`
 (untracked); every script uses npm. Pick one before the two drift. See [[phase-1-build]].
+
+**`bunx @better-auth/cli migrate` fails with `node-gyp: command not found`** when node is not on
+PATH — it builds `better-sqlite3` natively. With nvm, `source "$NVM_DIR/nvm.sh"` before
+`scripts/e2e-stack.sh` (or any `make` target that reaches the auth migration). The Makefile only
+prepends `~/.bun/bin`, so a non-login shell hits this every time. Same trap breaks `make desktop`,
+where Tauri shells out to `npm`.
+

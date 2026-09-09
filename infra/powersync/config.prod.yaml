@@ -1,13 +1,21 @@
 # PowerSync service config (production — see docker-compose.prod.yml).
 # `!env` values are injected by compose; sync-rules.yaml is shared with dev.
+#
+# sslmode is deliberately explicit on BOTH connections. PowerSync's pgwire driver insists on SSL
+# unless told otherwise, and fails with "postgres does not support ssl"; the Postgres shipped in
+# docker-compose.prod.yml has SSL off and lives on an internal network, so plaintext is correct
+# there. Point PS_DATABASE_URI at a managed database (Supabase) and set PS_SSLMODE=verify-full.
+# Without this the service exits at boot with an unhelpful "postgres query failed".
 replication:
   connections:
     - type: postgresql
       uri: !env PS_DATABASE_URI
+      sslmode: !env PS_SSLMODE
 
 storage:
   type: postgresql
   uri: !env PS_DATABASE_URI
+  sslmode: !env PS_SSLMODE
 
 port: 8080
 

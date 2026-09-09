@@ -8,8 +8,12 @@
 #     powersync → service powersync, port 8080
 # - Postgres is NOT exposed publicly; services reach it over the internal network.
 # - Deploy steps after first boot (Dokploy terminal or SSH):
-#     docker compose -f docker-compose.prod.yml run --rm auth bunx @better-auth/cli migrate
+#     docker compose -f docker-compose.prod.yml run --rm auth bunx better-auth migrate --yes
 #     docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
+#     docker compose -f docker-compose.prod.yml exec -T db \
+#       psql -U tendto -d tendto -c "CREATE PUBLICATION powersync FOR ALL TABLES;"
+#   The publication is NOT optional and no migration creates it: without it PowerSync replicates
+#   nothing and devices silently never sync. See docs/deploy-dokploy.md.
 
 services:
   db:
@@ -38,6 +42,9 @@ services:
     environment:
       PS_DATABASE_URI: postgresql://tendto:${POSTGRES_PASSWORD}@db:5432/tendto
       PS_JWKS_URI: http://auth:3001/api/auth/jwks
+      # The bundled Postgres has SSL off and is internal-only, so plaintext is correct here.
+      # Set PS_SSLMODE=verify-full when PS_DATABASE_URI points at a managed database.
+      PS_SSLMODE: ${PS_SSLMODE:-disable}
     volumes:
       - ./infra/powersync/config.prod.yaml:/config/config.yaml:ro
       - ./infra/powersync/sync-rules.yaml:/config/sync-rules.yaml:ro
@@ -59,6 +66,8 @@ services:
       AUTH_ISSUER: ${AUTH_URL}
       AUTH_AUDIENCE: ${AUTH_AUDIENCE:-tendto}
       WEB_URL: "${WEB_URL:?public https URL, e.g. https tendto.example}"
+      # Extra allowed browser origins (the desktop shell). Blank = the tauri:// defaults.
+      WEB_ORIGINS: ${WEB_ORIGINS:-}
     networks:
       - internal
       - dokploy-network
@@ -75,6 +84,7 @@ services:
       AUTH_JWKS_URL: http://auth:3001/api/auth/jwks
       AUTH_AUDIENCE: ${AUTH_AUDIENCE:-tendto}
       WEB_URL: ${WEB_URL}
+      WEB_ORIGINS: ${WEB_ORIGINS:-}
       # AI daily summary — empty AI_API_KEY keeps the offline fallback (no external calls).
       AI_BASE_URL: ${AI_BASE_URL:-}
       AI_API_KEY: ${AI_API_KEY:-}

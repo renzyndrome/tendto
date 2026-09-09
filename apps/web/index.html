@@ -4,6 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TendTo</title>
+    <meta name="description" content="Tend to your tasks, notes, and life." />
+
+    <!-- Installable-PWA head. The manifest link itself is injected by vite-plugin-pwa at build
+         time; everything here is what the plugin does not write for us.
+         The two theme-color tags must match --c-app in src/index.css (light 255 255 255, dark
+         10 10 10), so the Android status bar and the app's own background are the same colour.
+         Icons are generated from public/logo.svg by `npm run pwa-assets`. -->
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="TendTo" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <script>
       // Apply the stored theme BEFORE first paint, so a dark-mode user never sees a white
       // flash. Deliberately inline + blocking and duplicated from src/stores/theme.ts — the

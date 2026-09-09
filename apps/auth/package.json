@@ -7,9 +7,10 @@
     "dev": "bun --env-file=../../.env --watch src/index.ts",
     "start": "bun src/index.ts",
     "typecheck": "tsc --noEmit",
-    "migrate": "bun --env-file=../../.env x @better-auth/cli migrate"
+    "migrate": "bun --env-file=../../.env better-auth migrate"
   },
   "dependencies": {
+    "@better-auth/cli": "latest",
     "better-auth": "latest",
     "hono": "latest",
     "pg": "latest"
@@ -18,5 +19,6 @@
     "@types/bun": "latest",
     "@types/pg": "latest",
     "typescript": "~5.6.0"
-  }
+  },
+  "trustedDependencies": []
 }

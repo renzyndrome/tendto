@@ -7,6 +7,9 @@
  * PowerSync sync stream. Returns "" when the user is unauthenticated (no valid session).
  */
 
+import { isDesktop } from "../platform";
+import { getSessionToken } from "./session-token";
+
 const AUTH_URL = import.meta.env.VITE_AUTH_URL as string;
 const REFRESH_WINDOW_SECONDS = 60;
 
@@ -47,8 +50,15 @@ async function fetchFreshToken(): Promise<string> {
   const previous = cached;
   try {
     const res = await fetch(`${AUTH_URL}/api/auth/token`, {
+      // Browser: the session cookie is what authorises this exchange.
       credentials: "include",
-      headers: { Accept: "application/json" },
+      headers: {
+        Accept: "application/json",
+        // Desktop: the cookie never reaches the auth service from a tauri:// origin, so the
+        // session token goes in a bearer header instead — see auth/session-token.ts. Sending
+        // both is harmless; the server takes whichever it finds.
+        ...(isDesktop ? { Authorization: `Bearer ${getSessionToken()}` } : {}),
+      },
     });
     if (!res.ok) {
       // 401/403 → genuinely unauthenticated. Drop any cached token.

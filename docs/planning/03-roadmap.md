@@ -213,6 +213,30 @@ daily recap each evening.
 
 **Done means:** anything added since Phase 3 has earned its place.
 
+> **Status (2026-09-09): started, one gate outstanding.**
+>
+> - **The PWA is genuinely installable.** It had a service worker since Phase 1 but no icons at
+>   all, so Chrome never offered "Install app". Icons (generated once from `apps/web/public/logo.svg`
+>   and committed), the manifest fields, and the Apple/theme metas are in; registration moved into
+>   `src/lib/pwa.ts` so an installed phone checks hourly for a new build instead of sitting on a
+>   stale one indefinitely. `apps/web/e2e-pwa/pwa.spec.ts` (own Playwright config — the main suite
+>   runs `vite dev`, which has no service worker) asserts the shell **and the SQLite wasm** are
+>   precached and that a reload with the network off still renders. The Android install itself is a
+>   VPS checklist in `docs/deploy-dokploy.md`, since a phone cannot reach `localhost`.
+> - **The Tauri desktop shell earned its place and exists** (`apps/desktop`). Not a PWA wrapper:
+>   `tauri-plugin-powersync` moves the replica into a Rust-owned SQLite file, which is the one
+>   architectural reason doc 04 allowed a shell. The backend connector is Rust (the alpha SDK
+>   cannot connect from JavaScript), and the session token is held by Rust rather than webview
+>   storage. Verified end to end: uploads reaching FastAPI with 200s, the CRUD queue draining, rows
+>   in Postgres, a page created elsewhere appearing live in the shell, and FTS5 building natively.
+> - **The Linux risk is cleared.** Doc 04 named WebKitGTK's contenteditable behaviour as the one
+>   thing that could sink a desktop shell here. The editor was exercised by hand and behaves, so
+>   the Tauri shell stands and Electron + `@powersync/node` stays unused as plan B.
+> - **Deliberately not built:** auto-updater, code signing, autostart, deep links, Windows/macOS
+>   bundles, and a mobile shell. The responsive PWA is still the null hypothesis for phones.
+>
+> Still open from earlier phases: Stripe and pgvector semantic search.
+
 ---
 
 ## What we are deliberately NOT building (guardrails)

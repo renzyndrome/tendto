@@ -7,7 +7,7 @@
  *   4. `TABLE_MODELS` in apps/api/app/routers/sync.py — the upload allowlist, not just a
  *      dispatch map: a table missing from it is rejected with a 400.
  */
-import { column, Schema, Table } from "@powersync/web";
+import { column, Schema, Table } from "@powersync/common";
 
 const workspaces = new Table({
   name: column.text,

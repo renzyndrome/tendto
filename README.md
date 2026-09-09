@@ -15,9 +15,10 @@ Full plan: [docs/planning/](./docs/planning/) — start with
 
 ```
 apps/
-  web/    Vite + React 19 + TS SPA (PWA) — BlockNote editor, PowerSync client, TanStack Router
-  api/    FastAPI — the authoritative write path (sync upload), permissions, AI endpoints
-  auth/   better-auth on Hono + Bun — sessions, orgs/invites, JWT + JWKS (infra, not product code)
+  web/     Vite + React 19 + TS SPA (installable PWA) — BlockNote editor, PowerSync client, TanStack Router
+  desktop/ Tauri 2 shell — native SQLite replica owned by Rust, tray, native notifications
+  api/     FastAPI — the authoritative write path (sync upload), permissions, AI endpoints
+  auth/    better-auth on Hono + Bun — sessions, orgs/invites, JWT + JWKS (infra, not product code)
 infra/
   powersync/   sync-rules.yaml + service config
 docs/
@@ -64,8 +65,10 @@ One Dokploy Compose service from `docker-compose.prod.yml` (Postgres + PowerSync
 ## Testing
 
 ```bash
-make test   # API tests (pytest) + web typecheck
-make e2e    # boots the whole stack, then the Playwright suite — the per-feature "done gate"
+make test          # API tests (pytest) + web typecheck
+make e2e           # boots the whole stack, then the Playwright suite — the per-feature "done gate"
+make e2e-pwa       # the installable-PWA suite alone (production build, no backend needed)
+make desktop-test  # Rust checks for the desktop shell (fmt, clippy, unit tests)
 ```
 
 `make test` runs against a dedicated `tendto_test` database and **refuses** to target the one in
@@ -95,9 +98,13 @@ make e2e    # boots the whole stack, then the Playwright suite — the per-featu
 - **The recap is ambient** — it arrives each evening at a time you choose (9pm by default).
 - Plus light/dark theming and opt-in due/Pomodoro reminders.
 
-**Phase 2 is closed.** Still open: RLS hardening, pgvector semantic search, SQLite FTS (search
-is a LIKE match today), Stripe, and the backup/restore drill — each needs live services or its
-own infra pass. Native shells (Phase 4) are untouched by design.
+**Phases 0–3 are closed**, including ranked FTS5 search, the RLS backstop and the backup/restore
+drill. **Phase 4 has started**: the PWA is installable on a phone (icons, manifest, offline cold
+boot — see [docs/deploy-dokploy.md](./docs/deploy-dokploy.md) for the Android checklist), and a
+Tauri desktop shell lives in `apps/desktop` with the replica moved into Rust-owned native SQLite
+(see [docs/desktop.md](./docs/desktop.md); it needs one `sudo apt` line via `make desktop-deps`,
+and the editor still has to be exercised on WebKitGTK before the shell is trusted for daily work).
+Still open: Stripe and pgvector semantic search.
 
 > Running build state, open engineering items and the traps worth knowing before you touch the
 > editor or sync live in [`.claude/memory/`](./.claude/memory/) — start with `current-state.md`.
