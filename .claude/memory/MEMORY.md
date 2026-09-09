@@ -23,3 +23,7 @@ One line per memory. Full content in the linked files; keep this index lean.
 - [Replica timestamps & the midnight trap](replica-timestamps.md) — `updated_at` text changes across the sync round-trip (compare instants); time-of-day specs that break near midnight
 - [Backup & restore](backup-restore.md) — restoring Postgres is only half a restore: PowerSync's bucket storage must be wiped or replication is silently dead
 - [RLS backstop](rls-backstop.md) — installed but NOT forced (the owner bypasses); the ordered steps to make it bind, and the policy-recursion trap
+- [PWA install](pwa-install.md) — icons committed not built (sharp in Docker), our own SW registration for the hourly update check, and why the PWA E2E needs its own config
+- [PowerSync version alignment](powersync-version-alignment.md) — the four JS packages are pinned as a set by the alpha Tauri plugin; two copies of @powersync/common break Schema at runtime
+- [Desktop auth](desktop-auth.md) — the tauri:// origin cannot use the session cookie; bearer token held by Rust, origin allowlists became lists, and the camelCase-vs-snake_case trap that fails silently
+- [Production deploy](production-deploy.md) — four blockers that made docker-compose.prod.yml unbootable, plus the publication nothing creates; run the prod stack locally before deploying

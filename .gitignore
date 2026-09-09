@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 !.env.prod.example
+!.env.desktop
 
 # python
 __pycache__/
@@ -16,6 +17,7 @@ dist/
 # playwright / e2e artifacts
 apps/web/playwright-report/
 apps/web/e2e/.artifacts/
+apps/web/e2e-pwa/.artifacts/
 apps/web/test-results/
 # playwright drops .last-run.json relative to the cwd it was invoked from
 test-results/
@@ -24,6 +26,10 @@ test-results/
 node_modules/
 apps/web/dist/
 *.tsbuildinfo
+
+# rust / tauri desktop shell
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/
 
 # tooling
 .DS_Store

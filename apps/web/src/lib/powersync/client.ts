@@ -1,91 +1,45 @@
 /**
- * PowerSync client setup: local SQLite database + the connector that
- * (a) supplies the better-auth JWT for the sync stream, and
- * (b) uploads queued writes to FastAPI — the authoritative write path.
+ * PowerSync client: the local SQLite replica, and the lifecycle around it.
+ *
+ * Everything platform-specific — how the replica is opened, and who talks to the sync service —
+ * lives behind `@powersync-platform` (see platform-contract.ts). In the browser that is wasm
+ * SQLite plus a JavaScript connector; in the desktop shell it is a Rust-owned SQLite file with a
+ * Rust connector. What stays here is what is true on both: the search index has to be built
+ * before the stream opens, a sleeping device needs nudging back onto the network, and signing out
+ * must wipe this device's copy of the data.
+ *
+ * The one invariant neither platform may break: **every write goes up through FastAPI**
+ * (`POST /sync/upload`), never straight to Postgres.
  */
-import {
-  AbstractPowerSyncDatabase,
-  PowerSyncBackendConnector,
-  PowerSyncDatabase,
-} from "@powersync/web";
+import { platform } from "@powersync-platform";
 
-import { apiFetch } from "../api/client";
-import { getAuthToken } from "../auth/token";
 import { setupFts, teardownFts } from "./fts";
-import { AppSchema } from "./schema";
 
-export const db = new PowerSyncDatabase({
-  schema: AppSchema,
-  database: { dbFilename: "tendto.db" },
-});
+/** The local replica. All content reads in the app go through this. */
+export const db = platform.db;
 
-class Connector implements PowerSyncBackendConnector {
-  async fetchCredentials() {
-    // The same better-auth JWT that authenticates FastAPI also authenticates the sync stream.
-    // PowerSync re-calls this before the token expires and verifies it against the auth
-    // service's JWKS (see infra/powersync/config.yaml).
-    const token = await getAuthToken();
-    // No valid session yet (or offline with no cached token): return null so PowerSync waits
-    // and retries rather than opening the stream with an empty token.
-    if (!token) return null;
-    return {
-      endpoint: import.meta.env.VITE_POWERSYNC_URL as string,
-      token,
-    };
-  }
-
-  /** Upload queued local writes to FastAPI. Never bypasses the API. */
-  async uploadData(database: AbstractPowerSyncDatabase) {
-    const tx = await database.getNextCrudTransaction();
-    if (!tx) return;
-    try {
-      await apiFetch("/sync/upload", {
-        method: "POST",
-        body: JSON.stringify({
-          entries: tx.crud.map((op) => ({
-            op: op.op.toUpperCase(),
-            table: op.table,
-            id: op.id,
-            data: op.opData ?? null,
-          })),
-        }),
-      });
-      await tx.complete();
-    } catch (err) {
-      // Leave the transaction in the queue; PowerSync retries with backoff.
-      console.error("uploadData failed; will retry", err);
-      throw err;
-    }
-  }
-}
-
-/**
- * The live connector, kept so a reconnect can reuse it. Null while signed out — which is also
- * what stops the nudges below from reviving a signed-out session.
- */
-let connector: Connector | null = null;
 let reconnecting = false;
 let nudgesInstalled = false;
 
 /**
- * Re-open the sync stream if it is closed.
+ * Ask for a reconnect if the stream may have dropped.
  *
- * PowerSync retries on its own, but with a backoff that grows while a laptop is shut: come
- * back the next morning and the app can sit disconnected for the remainder of a long delay,
- * looking like a bug ("my phone's edits aren't here"). The events below say "the world just
- * changed" far more precisely than any timer, so we ask for an attempt right then.
+ * PowerSync retries on its own, but with a backoff that grows while a laptop is shut: come back
+ * the next morning and the app can sit disconnected for the remainder of a long delay, looking
+ * like a bug ("my phone's edits aren't here"). The events below say "the world just changed" far
+ * more precisely than any timer, so we ask for an attempt right then.
  *
  * `force` exists because `db.connected` is not trustworthy as a reason to do nothing: a socket
- * dropped by a sleeping network can still be reported as connected until something writes to
- * it. So a genuine `online` transition always re-dials, while the far more frequent
- * tab-focus check defers to the flag and usually costs nothing.
+ * dropped by a sleeping network can still be reported as connected until something writes to it.
+ * So a genuine `online` transition always re-dials, while the far more frequent tab-focus check
+ * defers to the flag and usually costs nothing.
  */
 async function ensureConnected(force = false): Promise<void> {
-  if (!connector || reconnecting) return;
+  if (reconnecting) return;
   if (!force && db.connected) return;
   reconnecting = true;
   try {
-    await db.connect(connector);
+    await platform.reconnect();
   } catch (err) {
     // Still offline, or the auth service is down. PowerSync keeps its own retry going.
     console.error("Reconnect attempt failed; PowerSync will keep retrying", err);
@@ -105,13 +59,21 @@ function installReconnectNudges(): void {
   });
 }
 
+/**
+ * Restore a session that was persisted outside the webview. No-op in the browser; on the desktop
+ * it hands the stored token back before better-auth's first request, so a restart does not look
+ * like a sign-out.
+ */
+export async function restoreSession(): Promise<void> {
+  await platform.restoreSession();
+}
+
 export async function connectDb(): Promise<void> {
   // Build the search index before opening the stream, so the triggers are in place for the
   // rows the first sync applies. Non-fatal: search falls back to LIKE scans if it fails.
   await setupFts(db);
-  connector = new Connector();
   installReconnectNudges();
-  await db.connect(connector);
+  await platform.connect();
 }
 
 /**
@@ -122,9 +84,14 @@ export async function connectDb(): Promise<void> {
  * removed by a bucket update, which a signed-out client never receives.
  */
 export async function disconnectAndClearDb(): Promise<void> {
-  // Drop the connector first: it is what the reconnect nudges check, so a stray "online" event
-  // during teardown must not re-open the stream for the account that is signing out.
-  connector = null;
+  // Drop the platform's connection state first: it is what the reconnect nudges check, so a
+  // stray "online" event during teardown must not re-open the stream for the account that is
+  // signing out. On the desktop this also deletes the stored session token.
+  try {
+    await platform.signOut();
+  } catch (err) {
+    console.error("Failed to clear this device's session on sign out", err);
+  }
   // The search index is a copy of this account's titles and block text — clear it too, and
   // before the replica, so its triggers are gone before the rows they watch are removed.
   await teardownFts(db);

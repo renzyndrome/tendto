@@ -11,6 +11,7 @@ import { useMemo, useState } from "react";
 
 import { signOut } from "../../lib/auth/client";
 import { clearAuthToken } from "../../lib/auth/token";
+import { clearSessionToken } from "../../lib/auth/session-token";
 import { bootstrapWorkspaces } from "../../lib/bootstrap";
 import { createCollection, deleteCollectionCascade } from "../../lib/collections";
 import { exportWorkspace } from "../../lib/export";
@@ -158,6 +159,8 @@ export function Sidebar() {
   async function handleSignOut(): Promise<void> {
     await signOut();
     clearAuthToken();
+    // Desktop only: drop the bearer session token too, so the next sign-in cannot inherit it.
+    clearSessionToken();
     // Clears the replica, not just the stream — see disconnectAndClearDb for why.
     await disconnectAndClearDb();
   }
