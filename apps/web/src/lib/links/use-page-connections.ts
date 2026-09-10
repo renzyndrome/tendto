@@ -11,13 +11,15 @@ import { useEffect, useState } from "react";
 
 import { db } from "../powersync/client";
 import { backlinksFor, unlinkedMentionsFor, type Backlink } from "./backlinks";
+import { relatedPages, type RelatedPage } from "./related";
 
 export interface PageConnections {
   backlinks: Backlink[];
   mentions: Backlink[];
+  related: RelatedPage[];
 }
 
-const EMPTY: PageConnections = { backlinks: [], mentions: [] };
+const EMPTY: PageConnections = { backlinks: [], mentions: [], related: [] };
 
 /** Coalesce bursts of edits: typing writes a block every half-second. */
 const THROTTLE_MS = 1000;
@@ -45,7 +47,11 @@ export function usePageConnections(workspaceId: string | null, pageId: string): 
         backlinksFor(workspaceId, pageId),
         unlinkedMentionsFor(workspaceId, pageId, title),
       ]);
-      if (!cancelled) setConnections({ backlinks, mentions });
+      // Related pages are computed last and exclude everything already listed above: a page
+      // that links here is a connection the reader can see, not a suggestion worth making.
+      const alreadyShown = [...backlinks, ...mentions].map((row) => row.pageId);
+      const related = await relatedPages.related(workspaceId, pageId, alreadyShown);
+      if (!cancelled) setConnections({ backlinks, mentions, related });
     };
 
     db.onChange(

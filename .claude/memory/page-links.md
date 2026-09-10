@@ -79,5 +79,23 @@ Item-description blocks are skipped (`page_id IS NULL`), since a backlink must c
 - The panel renders NOTHING when both are empty, and stays collapsed otherwise. An always-open
   panel turns every page into a page about its own metadata.
 
+## Related pages (phase C)
+
+`apps/web/src/lib/links/related.ts` ranks other pages by the open page's most distinctive words
+(`terms.ts`: frequency times length, minus a small stopword list). No embeddings: semantic search
+needs a paid embeddings API the self-hosted setup cannot provide, and the FTS index is already on
+the device. `relatedPages` is exported through `RelatedPagesProvider` so an embedding
+implementation can replace it without the panel changing.
+
+- **FTS5 will not evaluate `bm25()` in an aggregate context**, and wrapping the aggregate around a
+  subquery does not help either — `sum(bm25(fts_blocks)) ... GROUP BY` fails with "unable to use
+  function bm25 in the requested context". Select the built-in `rank` column instead (the same
+  score by another name) and total it in JavaScript.
+- Pages already listed as backlinks or mentions are excluded. A connection the reader can already
+  see is not a suggestion.
+- Titles are matched as well as bodies, so anything shared across many titles becomes a real
+  term. A test that stamped every title with the same run id related all of them to each other;
+  the fix was to glue the stamp into each title rather than leave it as its own word.
+
 Related: [[phase-1-build]] (block ids are BlockNote strings), [[theming]] (the chip is set apart
 by a pill and an underline because `accent` is the same shade as body text).

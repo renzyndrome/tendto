@@ -9,6 +9,7 @@ import { useState } from "react";
 
 import { usePageConnections } from "../../lib/links/use-page-connections";
 import type { Backlink } from "../../lib/links/backlinks";
+import type { RelatedPage } from "../../lib/links/related";
 import { router } from "../../routes/router";
 
 interface PageConnectionsProps {
@@ -17,15 +18,16 @@ interface PageConnectionsProps {
 }
 
 export function PageConnections({ workspaceId, pageId }: PageConnectionsProps) {
-  const { backlinks, mentions } = usePageConnections(workspaceId, pageId);
+  const { backlinks, mentions, related } = usePageConnections(workspaceId, pageId);
   const [open, setOpen] = useState(false);
 
-  const total = backlinks.length + mentions.length;
+  const total = backlinks.length + mentions.length + related.length;
   if (total === 0) return null;
 
   const summary = [
     backlinks.length > 0 ? `${backlinks.length} linked` : null,
     mentions.length > 0 ? `${mentions.length} mentioned` : null,
+    related.length > 0 ? `${related.length} related` : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -49,6 +51,8 @@ export function PageConnections({ workspaceId, pageId }: PageConnectionsProps) {
               hint that they might have meant to. */}
           <Group label="Linked from" testid="backlink-row" rows={backlinks} />
           <Group label="Mentioned in" testid="mention-row" rows={mentions} />
+          {/* Nobody connected these; the words did. Last, because it is the softest signal. */}
+          <Group label="Related" testid="related-row" rows={related} />
         </div>
       ) : null}
     </section>
@@ -58,7 +62,7 @@ export function PageConnections({ workspaceId, pageId }: PageConnectionsProps) {
 interface GroupProps {
   label: string;
   testid: string;
-  rows: Backlink[];
+  rows: (Backlink | RelatedPage)[];
 }
 
 function Group({ label, testid, rows }: GroupProps) {
@@ -78,7 +82,7 @@ function Group({ label, testid, rows }: GroupProps) {
               className="w-full rounded px-2 py-1.5 text-left hover:bg-hover"
             >
               <span className="block truncate text-sm text-fg">{row.title}</span>
-              {row.snippet ? (
+              {"snippet" in row && row.snippet ? (
                 <span className="block truncate text-xs text-subtle">{row.snippet}</span>
               ) : null}
             </button>
