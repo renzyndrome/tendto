@@ -13,6 +13,12 @@ export interface AiTask {
   label: string;
   /** True for tasks that act on the whole page rather than a selection (today: summarize). */
   whole_document: boolean;
+  /**
+   * Which surface offers this task. "editor" tasks rewrite text the user selected; "search"
+   * tasks answer a question about the workspace and belong in the command palette. The editor
+   * filters on this, so a task added server-side cannot appear in the rewrite menu by default.
+   */
+  scope: "editor" | "search";
 }
 
 export interface EngineStatus {
@@ -75,11 +81,13 @@ export async function streamCompose(
   text: string,
   onDelta: (piece: string) => void,
   signal?: AbortSignal,
+  /** Only for a search-scoped task: `text` carries the sources, this carries what to ask. */
+  options?: { question?: string },
 ): Promise<ComposeResult> {
   const res = await apiFetch("/ai/compose/stream", {
     method: "POST",
     signal,
-    body: JSON.stringify({ task, text }),
+    body: JSON.stringify({ task, text, question: options?.question }),
   });
   const body = res.body;
   if (!body) throw new Error("The AI engine returned nothing.");

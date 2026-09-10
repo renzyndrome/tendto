@@ -12,7 +12,7 @@
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 
-import type { Block, PartialBlock } from "@blocknote/core";
+import type { PartialBlock } from "@blocknote/core";
 import { BlockNoteView } from "@blocknote/mantine";
 import {
   BasicTextStyleButton,
@@ -24,10 +24,14 @@ import {
   useComponentsContext,
   useCreateBlockNote,
 } from "@blocknote/react";
+import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { loadEngineStatus, type AiTask } from "../../lib/ai/compose";
 import { AiPanel } from "./ai-panel";
+import { PAGE_LINK_ATTR, PAGE_LINK_TYPE } from "./page-link";
+import { PageLinkMenu } from "./page-link-menu";
+import { schema } from "./schema";
 
 import {
   persistBlocks,
@@ -36,6 +40,8 @@ import {
   type BlockRow,
 } from "../../lib/blocks/serialize";
 import { clearDraft, draftKey, onPageHidden, readDraft, writeDraft } from "../../lib/drafts";
+import { db } from "../../lib/powersync/client";
+import { useUiStore } from "../../stores/ui";
 import { useThemeStore } from "../../stores/theme";
 
 const SAVE_DEBOUNCE_MS = 500;
@@ -124,7 +130,8 @@ export function BlockEditor({
       (initialBlocks.length > 0 ? initialBlocks.map(rowToBlock) : undefined),
     [initialBlocks],
   );
-  const editor = useCreateBlockNote({ initialContent, uploadFile: uploadInlineFile });
+  // The default block set plus our `pageLink` inline node — see ./schema.
+  const editor = useCreateBlockNote({ schema, initialContent, uploadFile: uploadInlineFile });
 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dirty = useRef(false);
@@ -161,7 +168,7 @@ export function BlockEditor({
     dirty.current = false;
     inFlight.current = true;
     report.current?.("saving");
-    void persistBlocks(stableOwner, workspaceId, editor.document as Block[]).then(
+    void persistBlocks(stableOwner, workspaceId, editor.document).then(
       () => {
         inFlight.current = false;
         clearDraft(draftKey(stableOwner.kind, stableOwner.id));
@@ -190,7 +197,7 @@ export function BlockEditor({
       onPageHidden(() => {
         // Synchronous, so it survives the teardown that the async save cannot.
         if (dirty.current || inFlight.current) {
-          writeDraft(draftKey(stableOwner.kind, stableOwner.id), editor.document as Block[]);
+          writeDraft(draftKey(stableOwner.kind, stableOwner.id), editor.document);
         }
         flush();
       }),
@@ -223,18 +230,128 @@ export function BlockEditor({
   const compact = variant === "compact";
   const aiEnabled = !compact;
 
+  /*
+   * Following a page link. ONE NATIVE listener on the editor container, in the capture phase.
+   *
+   * Native, not React's `onClickCapture`, and on the container rather than on the chip, because
+   * BlockNote renders an inline node view through its OWN React root. React dispatches a
+   * synthetic event only within the root that owns the target's fiber, so neither a handler on
+   * the chip nor one on this container ever sees the click — the chip rendered perfectly and
+   * clicking it did nothing at all. A real DOM listener sees every click, whichever root drew
+   * the element.
+   *
+   * Capture phase also gets ahead of ProseMirror, which would otherwise treat the click as
+   * "put the caret here" and re-render the node underneath it.
+   */
+  const navigate = useNavigate();
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+
+    const chipFor = (event: Event): string | null => {
+      const target = event.target as HTMLElement | null;
+      return target?.closest<HTMLElement>(`[${PAGE_LINK_ATTR}]`)?.getAttribute(PAGE_LINK_ATTR) ?? null;
+    };
+    const onMouseDown = (event: Event) => {
+      if (chipFor(event)) event.preventDefault(); // keep the caret out of the chip
+    };
+    const onClick = (event: Event) => {
+      const pageId = chipFor(event);
+      if (!pageId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      /*
+       * Confirm the target still exists before going there. A page can be deleted while a link
+       * to it is on screen, and opening an id that is gone renders an EMPTY editor: typing in it
+       * would insert blocks whose page Postgres no longer has, the upload would be rejected, and
+       * this device's ordered queue would wedge for good. The chip also paints itself as dead,
+       * but that is presentation — this is the guard that has to hold.
+       */
+      void db
+        .getAll<{ id: string }>("SELECT id FROM pages WHERE id = ?", [pageId])
+        .then((rows) => {
+          if (rows.length > 0) void navigate({ to: "/p/$pageId", params: { pageId } });
+        })
+        .catch(() => undefined);
+    };
+
+    surface.addEventListener("mousedown", onMouseDown, true);
+    surface.addEventListener("click", onClick, true);
+    return () => {
+      surface.removeEventListener("mousedown", onMouseDown, true);
+      surface.removeEventListener("click", onClick, true);
+    };
+  }, [navigate]);
+
   // Asked once per session and cached in the module; an empty list means no engine, and every
   // AI affordance simply never renders.
   useEffect(() => {
     if (!aiEnabled) return;
     let cancelled = false;
     void loadEngineStatus().then((status) => {
-      if (!cancelled) setAiTasks(status.available ? status.tasks : []);
+      // Editor tasks only: "Ask my notes" is answered from the command palette, and a
+      // question-shaped row in a rewrite menu would have nothing to rewrite.
+      if (!cancelled) {
+        setAiTasks(status.available ? status.tasks.filter((task) => task.scope !== "search") : []);
+      }
     });
     return () => {
       cancelled = true;
     };
   }, [aiEnabled]);
+
+  /*
+   * Offer this page as somewhere an answer can be put. "Ask my notes" runs in the command
+   * palette, which has no editor of its own, so the editor publishes HOW to accept text rather
+   * than the palette reaching into it. Registered only for a real page: a card description is
+   * a sentence or two, and an answer with a source list does not belong in one.
+   */
+  const setPageInsert = useUiStore((s) => s.setPageInsert);
+  useEffect(() => {
+    if (compact || stableOwner.kind !== "page") return;
+    setPageInsert({
+      pageId: stableOwner.id,
+      insert: (text, sources) => {
+        const blocks = editor.tryParseMarkdownToBlocks(text);
+        if (blocks.length === 0) return;
+        const last = editor.document[editor.document.length - 1];
+        if (!last) return;
+        editor.insertBlocks(blocks, last.id, "after");
+
+        // The sources become real links, so the answer can be checked later by whoever reads
+        // the page rather than only by whoever asked.
+        if (sources.length > 0) {
+          const trail = editor.document[editor.document.length - 1];
+          if (trail) {
+            editor.insertBlocks(
+              [
+                {
+                  type: "paragraph",
+                  content: [
+                    { type: "text", text: "Sources: ", styles: {} },
+                    ...sources.flatMap((source, index) => [
+                      ...(index > 0
+                        ? [{ type: "text" as const, text: ", ", styles: {} }]
+                        : []),
+                      {
+                        type: PAGE_LINK_TYPE as "pageLink",
+                        props: { pageId: source.pageId, title: source.title },
+                      },
+                    ]),
+                  ],
+                },
+              ],
+              trail.id,
+              "after",
+            );
+          }
+        }
+        handleChangeRef.current();
+      },
+    });
+    return () => setPageInsert(null);
+  }, [compact, stableOwner, editor, setPageInsert]);
 
   /** Toolbar entry: work on what the user highlighted, and put the result back in its place. */
   const askAboutSelection = useCallback(() => {
@@ -295,7 +412,7 @@ export function BlockEditor({
   );
 
   return (
-    <div className={compact ? "tendto-compact-editor" : undefined}>
+    <div ref={surfaceRef} className={compact ? "tendto-compact-editor" : undefined}>
       {hasAi ? (
         // Quiet and right-aligned: a page you never want summarized should not have to look at
         // a prominent button forever. It is absent entirely when no engine is configured.
@@ -326,6 +443,12 @@ export function BlockEditor({
         // toolbar, but only so it can render the same one plus "Ask AI" (below).
         formattingToolbar={false}
       >
+        <PageLinkMenu
+          editor={editor}
+          workspaceId={workspaceId}
+          currentPageId={stableOwner.kind === "page" ? stableOwner.id : null}
+        />
+
         {compact ? (
           // A curated set, not the default one. The defaults add four alignment buttons, a
           // colour picker and nesting controls — in a card description that is the "endlessly

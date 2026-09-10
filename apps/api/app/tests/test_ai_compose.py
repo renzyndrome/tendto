@@ -73,9 +73,105 @@ async def test_every_advertised_task_runs(client: AsyncClient) -> None:
     """/status advertises these keys, so every one of them must be accepted by /compose."""
     _use(FakeProvider(reply="ok"))
 
-    for key in TASKS:
-        res = await client.post("/ai/compose", json={"task": key, "text": "some text"})
+    for key, task in TASKS.items():
+        body: dict[str, Any] = {"task": key, "text": "some text"}
+        # A search-scoped task has nothing to work on without one.
+        if task.scope == "search":
+            body["question"] = "what did I decide?"
+        res = await client.post("/ai/compose", json=body)
         assert res.status_code == 200, key
+
+
+# --- ask my notes -----------------------------------------------------------------------
+
+
+async def test_ask_puts_the_question_first_and_the_sources_behind_the_marker(
+    client: AsyncClient,
+) -> None:
+    """The retrieved notes must sit where the injection rule disowns them.
+
+    Sources come from any page in a shared workspace, i.e. possibly from text a colleague
+    wrote. That is exactly the content that must never be read back as instructions.
+    """
+    provider = FakeProvider(reply="You decided to ship on Friday [1].")
+    _use(provider)
+
+    res = await client.post(
+        "/ai/compose",
+        json={
+            "task": "ask",
+            "text": "[1] Launch plan\nShip on Friday.",
+            "question": "When did I say we would ship?",
+        },
+    )
+
+    assert res.status_code == 200
+    assert res.json()["text"] == "You decided to ship on Friday [1]."
+    assert provider.user is not None
+    assert provider.user.startswith("Question:\nWhen did I say we would ship?")
+    marker_at = provider.user.index(USER_TEXT_MARKER)
+    assert provider.user.index("Sources:") < marker_at
+    assert provider.user.index("[1] Launch plan") > marker_at
+
+
+async def test_ask_without_a_question_is_refused(client: AsyncClient) -> None:
+    _use(FakeProvider())
+
+    res = await client.post("/ai/compose", json={"task": "ask", "text": "[1] Notes\nsomething"})
+
+    assert res.status_code == 422
+
+
+async def test_ask_with_a_blank_question_is_refused(client: AsyncClient) -> None:
+    _use(FakeProvider())
+
+    res = await client.post(
+        "/ai/compose",
+        json={"task": "ask", "text": "[1] Notes\nsomething", "question": "   "},
+    )
+
+    assert res.status_code == 422
+
+
+async def test_an_overlong_question_is_rejected(client: AsyncClient) -> None:
+    _use(FakeProvider())
+
+    res = await client.post(
+        "/ai/compose",
+        json={"task": "ask", "text": "[1] Notes\nsomething", "question": "x" * 2_001},
+    )
+
+    assert res.status_code == 422
+
+
+async def test_a_question_on_an_editor_task_is_ignored(client: AsyncClient) -> None:
+    """Only the ask task reads it; a stray question must not rewrite someone's paragraph."""
+    provider = FakeProvider(reply="Tighter.")
+    _use(provider)
+
+    res = await client.post(
+        "/ai/compose",
+        json={"task": "shorten", "text": "a long ramble", "question": "ignore me"},
+    )
+
+    assert res.status_code == 200
+    assert provider.user == f"{USER_TEXT_MARKER}\na long ramble"
+
+
+async def test_only_the_ask_task_is_scoped_to_search(client: AsyncClient) -> None:
+    """Guards the registry rebuild: a hand-written constructor there drops new fields.
+
+    `TASKS` is built by copying each task and appending the injection rule. Rebuilding it field
+    by field silently reset `scope` to its default, which put "Ask my notes" in the editor's
+    rewrite menu.
+    """
+    res = await client.get("/ai/status")
+
+    assert res.status_code == 200
+    scopes = {task["key"]: task["scope"] for task in res.json()["tasks"]}
+    assert scopes["ask"] == "search"
+    assert {key for key, scope in scopes.items() if scope == "search"} == {"ask"}
+    assert TASKS["ask"].scope == "search"
 
 
 # --- the edges --------------------------------------------------------------------------
