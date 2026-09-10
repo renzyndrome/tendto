@@ -29,7 +29,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { loadEngineStatus, type AiTask } from "../../lib/ai/compose";
 import { AiPanel } from "./ai-panel";
-import { PAGE_LINK_ATTR } from "./page-link";
+import { PAGE_LINK_ATTR, PAGE_LINK_TYPE } from "./page-link";
 import { PageLinkMenu } from "./page-link-menu";
 import { schema } from "./schema";
 
@@ -41,6 +41,7 @@ import {
 } from "../../lib/blocks/serialize";
 import { clearDraft, draftKey, onPageHidden, readDraft, writeDraft } from "../../lib/drafts";
 import { db } from "../../lib/powersync/client";
+import { useUiStore } from "../../stores/ui";
 import { useThemeStore } from "../../stores/theme";
 
 const SAVE_DEBOUNCE_MS = 500;
@@ -289,12 +290,68 @@ export function BlockEditor({
     if (!aiEnabled) return;
     let cancelled = false;
     void loadEngineStatus().then((status) => {
-      if (!cancelled) setAiTasks(status.available ? status.tasks : []);
+      // Editor tasks only: "Ask my notes" is answered from the command palette, and a
+      // question-shaped row in a rewrite menu would have nothing to rewrite.
+      if (!cancelled) {
+        setAiTasks(status.available ? status.tasks.filter((task) => task.scope !== "search") : []);
+      }
     });
     return () => {
       cancelled = true;
     };
   }, [aiEnabled]);
+
+  /*
+   * Offer this page as somewhere an answer can be put. "Ask my notes" runs in the command
+   * palette, which has no editor of its own, so the editor publishes HOW to accept text rather
+   * than the palette reaching into it. Registered only for a real page: a card description is
+   * a sentence or two, and an answer with a source list does not belong in one.
+   */
+  const setPageInsert = useUiStore((s) => s.setPageInsert);
+  useEffect(() => {
+    if (compact || stableOwner.kind !== "page") return;
+    setPageInsert({
+      pageId: stableOwner.id,
+      insert: (text, sources) => {
+        const blocks = editor.tryParseMarkdownToBlocks(text);
+        if (blocks.length === 0) return;
+        const last = editor.document[editor.document.length - 1];
+        if (!last) return;
+        editor.insertBlocks(blocks, last.id, "after");
+
+        // The sources become real links, so the answer can be checked later by whoever reads
+        // the page rather than only by whoever asked.
+        if (sources.length > 0) {
+          const trail = editor.document[editor.document.length - 1];
+          if (trail) {
+            editor.insertBlocks(
+              [
+                {
+                  type: "paragraph",
+                  content: [
+                    { type: "text", text: "Sources: ", styles: {} },
+                    ...sources.flatMap((source, index) => [
+                      ...(index > 0
+                        ? [{ type: "text" as const, text: ", ", styles: {} }]
+                        : []),
+                      {
+                        type: PAGE_LINK_TYPE as "pageLink",
+                        props: { pageId: source.pageId, title: source.title },
+                      },
+                    ]),
+                  ],
+                },
+              ],
+              trail.id,
+              "after",
+            );
+          }
+        }
+        handleChangeRef.current();
+      },
+    });
+    return () => setPageInsert(null);
+  }, [compact, stableOwner, editor, setPageInsert]);
 
   /** Toolbar entry: work on what the user highlighted, and put the result back in its place. */
   const askAboutSelection = useCallback(() => {

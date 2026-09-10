@@ -97,5 +97,29 @@ implementation can replace it without the panel changing.
   term. A test that stamped every title with the same run id related all of them to each other;
   the fix was to glue the stamp into each title rather than leave it as its own word.
 
+## Ask my notes (phase D)
+
+A question typed in the command palette is answered from the workspace, with cited sources.
+Client: `lib/ai/retrieve.ts` + `components/search/ask-notes.tsx`. Server: the `ask` task in
+`app/ai/compose.py`, `question` on `ComposeRequest`, and the branch in `_prepare`.
+
+- **Retrieval runs on the device.** The server is handed a question and a numbered bundle of
+  text, exactly as the rewrite tasks hand it a paragraph; it never reads the workspace for this.
+  That keeps "every interactive action is user-triggered, on content the user chose" true, and
+  bounds how much of a workspace an engine ever sees.
+- **The question goes BEFORE `USER_TEXT_MARKER` and the sources after it.** Extracts can come
+  from any page in a shared workspace, i.e. from text a colleague wrote, which is exactly the
+  content that must never be read back as instructions.
+- **`TASKS` is rebuilt with `dataclasses.replace`.** It used to be reconstructed field by field,
+  which silently drops any field added to `Task` later — `scope` would have reset to "editor" and
+  put "Ask my notes" in the editor's rewrite menu. A test pins this.
+- **An empty retrieval short-circuits before the engine is called.** The spend guards only see
+  requests that are made, so asking a model to answer from nothing would spend a call to be told
+  what the device already knew.
+- The answer reaches a document only through "Insert into this page", and cited pages are
+  inserted as real `[[` links so the answer stays checkable. The editor publishes HOW to accept
+  text through `useUiStore.pageInsert`; the palette has no editor of its own to reach into.
+- No chat history. A thread would turn the search box into a second place to keep things.
+
 Related: [[phase-1-build]] (block ids are BlockNote strings), [[theming]] (the chip is set apart
 by a pill and an underline because `accent` is the same shade as body text).
