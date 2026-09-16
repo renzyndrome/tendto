@@ -27,25 +27,12 @@ export function isAutoTitle(title: string): boolean {
  * the list does not creep upward forever. Numbering starts at 2 because the first one reads
  * better without a "1" after it.
  */
-async function nextAutoTitle(workspaceId: string): Promise<string> {
-  const rows = await db.getAll<{ title: string }>(
-    "SELECT title FROM pages WHERE workspace_id = ? AND title LIKE ?",
-    [workspaceId, `${AUTO_TITLE}%`],
-  );
-  const taken = new Set(rows.map((row) => row.title.trim()));
+function pickAutoTitle(taken: Set<string>): string {
   if (!taken.has(AUTO_TITLE)) return AUTO_TITLE;
   for (let n = 2; ; n += 1) {
     const candidate = `${AUTO_TITLE} ${n}`;
     if (!taken.has(candidate)) return candidate;
   }
-}
-
-async function nextPosition(workspaceId: string): Promise<number> {
-  const rows = await db.getAll<{ next: number | null }>(
-    "SELECT MAX(position) AS next FROM pages WHERE workspace_id = ?",
-    [workspaceId],
-  );
-  return (rows[0]?.next ?? -1) + 1;
 }
 
 /** Create a page (optionally nested under `parentId`). Returns the new page id. */
@@ -55,15 +42,33 @@ export async function createPage(
 ): Promise<string> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  const [position, title] = await Promise.all([
-    nextPosition(workspaceId),
-    nextAutoTitle(workspaceId),
-  ]);
-  await db.execute(
-    `INSERT INTO pages (id, workspace_id, parent_id, title, position, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [id, workspaceId, parentId, title, position, now, now],
-  );
+
+  /*
+   * Read and insert in ONE transaction. Both the position and the auto name are chosen from
+   * what the table already holds, so two creates started before either had committed would
+   * read the same answer and pick the same name — which is exactly what clicking "New page"
+   * twice quickly does, since the handler does not block the button.
+   */
+  await db.writeTransaction(async (tx) => {
+    const [positions, titles] = await Promise.all([
+      tx.getAll<{ next: number | null }>(
+        "SELECT MAX(position) AS next FROM pages WHERE workspace_id = ?",
+        [workspaceId],
+      ),
+      tx.getAll<{ title: string }>(
+        "SELECT title FROM pages WHERE workspace_id = ? AND title LIKE ?",
+        [workspaceId, `${AUTO_TITLE}%`],
+      ),
+    ]);
+    const position = (positions[0]?.next ?? -1) + 1;
+    const title = pickAutoTitle(new Set(titles.map((row) => row.title.trim())));
+
+    await tx.execute(
+      `INSERT INTO pages (id, workspace_id, parent_id, title, position, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, workspaceId, parentId, title, position, now, now],
+    );
+  });
   return id;
 }
 

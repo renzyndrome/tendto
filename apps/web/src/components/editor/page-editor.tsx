@@ -208,8 +208,17 @@ function PageTitle({ pageId, initialTitle }: { pageId: string; initialTitle: str
 
   const commit = useCallback(() => {
     if (timer.current) clearTimeout(timer.current);
-    void renamePage(pageId, latest.current.trim()).then(() => clearDraft(key));
-  }, [pageId, key]);
+    /*
+     * A title that has not changed is not written back. This is not only about saving an
+     * upload: the commit also runs on unmount, and if this editor was hydrated before its
+     * page's row reached the replica it holds an empty string — which it would then save over
+     * a perfectly good name. Two pages both showing as "Untitled" in the sidebar was that,
+     * with the fallback hiding the empty title.
+     */
+    const next = latest.current.trim();
+    if (next === initialTitle.trim()) return;
+    void renamePage(pageId, next).then(() => clearDraft(key));
+  }, [pageId, key, initialTitle]);
 
   useEffect(() => {
     // Replay anything recovered from a session that was torn down mid-edit.
@@ -236,6 +245,16 @@ function PageTitle({ pageId, initialTitle }: { pageId: string; initialTitle: str
     <input
       value={title}
       onChange={(e) => onChange(e.target.value)}
+      /*
+       * An app-chosen name selects itself when you click into it, so the first thing you type
+       * replaces it. It has to be a real value rather than a placeholder — the sidebar has to
+       * call the page something, and three blank pages all called "Untitled" are worse than a
+       * word you have to type over. Selecting it gives you the placeholder's feel with a real
+       * name behind it. A name you chose is left exactly where your cursor landed.
+       */
+      onFocus={(e) => {
+        if (isAutoTitle(e.currentTarget.value)) e.currentTarget.select();
+      }}
       placeholder="Untitled"
       aria-label="Page title"
       data-testid="page-title"

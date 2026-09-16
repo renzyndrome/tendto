@@ -1,5 +1,6 @@
 import { expect, test } from "./fixtures";
 import { makeUser } from "./helpers/data";
+import { expectNewPageOpened } from "./helpers/pages";
 
 /**
  * Presence — "who else is reading this".
@@ -96,7 +97,7 @@ test.describe("presence", () => {
       // Wait for the NEW editor to mount before typing. The previous page's title box is still
       // in the DOM for a beat, and `fill` would happily rename that one instead — the same race
       // that bites `.last()` elsewhere in this suite.
-      await expect(page.getByTestId("page-title")).toHaveValue("Untitled");
+      await expectNewPageOpened(page);
       await page.getByTestId("page-title").fill(title);
       await expect(page.getByRole("button", { name: title })).toBeVisible();
     }
