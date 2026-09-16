@@ -5,6 +5,41 @@
  */
 import { db } from "./powersync/client";
 
+/** The name a page gets before you give it one. */
+export const AUTO_TITLE = "Untitled";
+
+/**
+ * Is this still the name the app chose, rather than one the user typed?
+ *
+ * Matches "Untitled" and "Untitled 2", "Untitled 3"… — and an empty title, which is what you
+ * are left with after clearing the box. Used to decide whether a page counts as "real" yet,
+ * whether its title should be selected on focus, and which auto numbers are free.
+ */
+export function isAutoTitle(title: string): boolean {
+  const trimmed = title.trim();
+  return trimmed === "" || /^Untitled(?: \d+)?$/.test(trimmed);
+}
+
+/**
+ * The next free auto name: "Untitled", then "Untitled 2", "Untitled 3"…
+ *
+ * Only pages that are STILL auto-named hold a number, so naming one frees its slot again and
+ * the list does not creep upward forever. Numbering starts at 2 because the first one reads
+ * better without a "1" after it.
+ */
+async function nextAutoTitle(workspaceId: string): Promise<string> {
+  const rows = await db.getAll<{ title: string }>(
+    "SELECT title FROM pages WHERE workspace_id = ? AND title LIKE ?",
+    [workspaceId, `${AUTO_TITLE}%`],
+  );
+  const taken = new Set(rows.map((row) => row.title.trim()));
+  if (!taken.has(AUTO_TITLE)) return AUTO_TITLE;
+  for (let n = 2; ; n += 1) {
+    const candidate = `${AUTO_TITLE} ${n}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}
+
 async function nextPosition(workspaceId: string): Promise<number> {
   const rows = await db.getAll<{ next: number | null }>(
     "SELECT MAX(position) AS next FROM pages WHERE workspace_id = ?",
@@ -20,11 +55,14 @@ export async function createPage(
 ): Promise<string> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  const position = await nextPosition(workspaceId);
+  const [position, title] = await Promise.all([
+    nextPosition(workspaceId),
+    nextAutoTitle(workspaceId),
+  ]);
   await db.execute(
     `INSERT INTO pages (id, workspace_id, parent_id, title, position, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [id, workspaceId, parentId, "Untitled", position, now, now],
+    [id, workspaceId, parentId, title, position, now, now],
   );
   return id;
 }

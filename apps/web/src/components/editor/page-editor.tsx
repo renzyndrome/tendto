@@ -6,6 +6,7 @@
  * remounts it with fresh content. Persistence lives in BlockEditor — the same component the
  * card description uses.
  */
+import { useQuery } from "@powersync/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useExternalEdit } from "../../lib/blocks/external-edit";
@@ -13,7 +14,7 @@ import { exactTime, shortDate, timeAgo } from "../../lib/comments/format";
 import { loadBlocks, pageOwner, type BlockRow } from "../../lib/blocks/serialize";
 import { clearDraft, draftKey, onPageHidden, readDraft, writeDraft } from "../../lib/drafts";
 import { usePageStamps } from "../../lib/page-stamps";
-import { renamePage } from "../../lib/pages";
+import { isAutoTitle, renamePage } from "../../lib/pages";
 import { db } from "../../lib/powersync/client";
 import { usePresence } from "../../lib/presence/use-presence";
 import { useUiStore } from "../../stores/ui";
@@ -129,13 +130,41 @@ function PageEditorInner({
 
       {/* Below the body, in the same column: a page's discussion belongs after the page, not in
           a side panel competing with it for attention. */}
-      <div className="mt-10 border-t border-line pt-5">
-        <CommentSection
-          owner={{ kind: "page", id: pageId }}
-          workspaceId={pageWorkspaceId ?? workspaceId}
-        />
-      </div>
+      <PageDiscussion pageId={pageId} workspaceId={pageWorkspaceId ?? workspaceId} />
     </div>
+  );
+}
+
+/**
+ * The page's comment thread, kept away until the page has something to discuss.
+ *
+ * A blank page offering a comment box is asking you to talk about nothing. A page counts as
+ * real once it has been written on OR named by hand — either is somebody deciding it exists.
+ * Both are read from the replica rather than from the editor, deliberately: a signal routed
+ * through this component's parent would re-render the editor on the first keystroke and close
+ * whatever toolbar was open. This is a sibling, so its own re-renders cost the editor nothing.
+ *
+ * Emptying a page again leaves its blocks in place, so a thread never disappears out from under
+ * a conversation.
+ */
+function PageDiscussion({ pageId, workspaceId }: { pageId: string; workspaceId: string | null }) {
+  const { data: rows, isLoading } = useQuery<{ title: string; blocks: number }>(
+    `SELECT p.title AS title,
+            (SELECT count(*) FROM blocks WHERE page_id = p.id) AS blocks
+       FROM pages p WHERE p.id = ?`,
+    [pageId],
+  );
+  // An empty array is also what the hook reports while it is still loading.
+  const row = isLoading ? undefined : rows[0];
+  // Written on, or named by hand. Either makes it a page somebody might discuss.
+  const started = row !== undefined && (row.blocks > 0 || !isAutoTitle(row.title));
+
+  return (
+    <CommentSection
+      owner={{ kind: "page", id: pageId }}
+      workspaceId={workspaceId}
+      hideWhenEmpty={!started}
+    />
   );
 }
 

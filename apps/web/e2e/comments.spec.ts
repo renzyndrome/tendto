@@ -68,6 +68,9 @@ test.describe("comments", () => {
 
   test("Enter sends, Shift+Enter starts a new line", async ({ authedPage: page }) => {
     await page.getByRole("button", { name: "New page" }).click();
+    // Naming it is what makes it a page. A blank one has no thread to comment on — see
+    // empty-page.spec.ts.
+    await page.getByTestId("page-title").fill("Keyboard notes");
     const box = page.getByTestId("comment-section").getByRole("textbox");
 
     await box.fill("first line");
@@ -112,6 +115,7 @@ test.describe("comments", () => {
     user,
   }) => {
     await page.getByRole("button", { name: "New page" }).click();
+    await page.getByTestId("page-title").fill("Mention notes");
     const box = page.getByTestId("comment-section").getByRole("textbox");
 
     await box.click();

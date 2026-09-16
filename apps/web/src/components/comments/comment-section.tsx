@@ -19,13 +19,31 @@ import { CommentItem } from "./comment-item";
 interface CommentSectionProps {
   owner: CommentOwner;
   workspaceId: string | null;
+  /**
+   * Hide the whole thread while there is nothing to discuss yet. A blank page offering a
+   * comment box is asking you to talk about nothing; the invitation arrives once the page
+   * does. Ignored once a comment exists — a thread never disappears because its page was
+   * emptied. Omit it and the section always renders, which is what a card wants.
+   */
+  hideWhenEmpty?: boolean;
+  /**
+   * "page" draws its own separator and the space above it, so both vanish with the section.
+   * "card" draws neither: the card dialog frames it, because there the thread is a fixed part
+   * of the layout and the rule divides it from the fields above.
+   */
+  variant?: "page" | "card";
 }
 
 interface RoleRow {
   role: string;
 }
 
-export function CommentSection({ owner, workspaceId }: CommentSectionProps) {
+export function CommentSection({
+  owner,
+  workspaceId,
+  hideWhenEmpty = false,
+  variant = "page",
+}: CommentSectionProps) {
   const { data: session } = useSession();
   const currentUserId = session?.user?.id ?? null;
   // The label a new comment is stamped with. Server-side only `author_id` is trusted; this is
@@ -50,8 +68,17 @@ export function CommentSection({ owner, workspaceId }: CommentSectionProps) {
   const role = roles?.[0]?.role ?? null;
   const canWrite = role === "owner" || role === "editor";
 
+  if (hideWhenEmpty && comments.length === 0) return null;
+
   return (
-    <section data-testid="comment-section">
+    /*
+     * On a page the separator belongs to the SECTION, not to the caller: hung outside it, a
+     * rule would stay on screen after the section itself had gone, marking off nothing.
+     */
+    <section
+      data-testid="comment-section"
+      className={variant === "page" ? "mt-10 border-t border-line pt-5" : undefined}
+    >
       <h3 className="mb-1.5 text-xs text-subtle">
         Comments
         {comments.length > 0 ? <span className="text-subtle"> · {comments.length}</span> : null}

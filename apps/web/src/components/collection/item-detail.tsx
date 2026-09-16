@@ -299,7 +299,11 @@ export function ItemDetail({ row, columns, workspaceId, onClose, onDeleted }: It
             {/* The CARD's workspace, not the active one: they are the same today, but pinning a
                 comment to a workspace its card doesn't live in would hide it from the people
                 looking at that card. */}
-            <CommentSection owner={{ kind: "item", id: row.id }} workspaceId={row.workspace_id} />
+            <CommentSection
+              owner={{ kind: "item", id: row.id }}
+              workspaceId={row.workspace_id}
+              variant="card"
+            />
           </div>
         </div>
 
