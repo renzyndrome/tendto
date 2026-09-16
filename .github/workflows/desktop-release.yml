@@ -1,0 +1,99 @@
+# Build the desktop app for Linux, Windows and macOS, and attach the installers to a draft
+# GitHub Release.
+#
+# Triggered by a version tag, because a desktop build is a point in time: its backend URLs are
+# COMPILED IN and there is no auto-updater, so every change of address means a new binary that
+# people install by hand. `scripts/bump-version.sh` writes the tag's version into the four
+# places that carry one.
+#
+# The release is left as a DRAFT on purpose. Only Linux is tested; the other two are built
+# because the code compiles for them, not because anyone has run them. Read the checklist in
+# docs/desktop.md, try the artifacts, then publish.
+name: Desktop release
+
+on:
+  push:
+    tags: ["v*"]
+  # For rehearsing the workflow itself without minting a tag.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      # One platform failing must not bin the others: a green Linux build is the release.
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            label: Linux
+          - os: windows-latest
+            label: Windows
+          - os: macos-latest
+            label: macOS
+
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.label }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System libraries (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        # Mirrors scripts/desktop-deps.sh. Two of these are NOT in Tauri's own prerequisite
+        # list and the build dies without them: `libclang-dev`, because PowerSync's SQLite
+        # bindings run bindgen, and `patchelf`, which the AppImage bundler shells out to.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev pkg-config patchelf libclang-dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            apps/web/package-lock.json
+            apps/desktop/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: Install JS dependencies
+        run: |
+          npm --prefix apps/web ci
+          npm --prefix apps/desktop ci
+
+      - name: Build and bundle
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Compiled into the bundle — see the Vite config, which refuses to build a desktop
+          # release without them rather than shipping an app that looks merely offline. Set
+          # these as repository VARIABLES (Settings → Secrets and variables → Actions →
+          # Variables); they are public URLs, not secrets.
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_AUTH_URL: ${{ vars.VITE_AUTH_URL }}
+          VITE_POWERSYNC_URL: ${{ vars.VITE_POWERSYNC_URL }}
+        with:
+          projectPath: apps/desktop
+          tagName: ${{ github.ref_name }}
+          releaseName: TendTo ${{ github.ref_name }}
+          releaseDraft: true
+          prerelease: true
+          releaseBody: |
+            Install the file for your system. Nothing here is signed, so Windows SmartScreen
+            and macOS Gatekeeper will both warn you the first time.
+
+            **Linux** is the tested platform: `.AppImage` runs anywhere, `.deb` for Debian and
+            Ubuntu. **Windows** and **macOS** builds are attached because the code compiles for
+            them, not because they have been run — treat them as experiments.
+
+            This build talks to one fixed backend, chosen when it was built. There is no
+            auto-updater: a new version means downloading it again.

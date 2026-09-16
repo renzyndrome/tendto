@@ -125,7 +125,46 @@ Verified on Linux (Ubuntu 25.04, WebKitGTK 2.50):
 **Not yet verified:** tray menu, close-to-tray, second-launch focus, and a native notification
 firing from a Pomodoro.
 
+## Releasing
+
+Installers are built by GitHub Actions and attached to a **draft** release, triggered by a
+version tag.
+
+**Before the first release**, set three repository variables (Settings → Secrets and variables →
+Actions → **Variables**, not Secrets — they are public URLs): `VITE_API_URL`, `VITE_AUTH_URL` and
+`VITE_POWERSYNC_URL`, pointing at the deployed backend from `docs/deploy-dokploy.md`.
+
+They are not optional. Those URLs are **compiled into the bundle**, so a build without them
+produces an app that starts, signs nobody in, and looks like it is merely offline. The Vite config
+refuses to build a desktop release rather than ship that.
+
+```bash
+./scripts/bump-version.sh 0.2.0     # writes the version into all five files
+git add -A && git commit -m "chore: release v0.2.0"
+git tag v0.2.0 && git push origin main --tags
+```
+
+Then, before publishing the draft:
+
+1. Install the `.AppImage` on a machine that is **not** your dev box — the point is to catch a
+   build that only works next to `make dev`.
+2. Sign in, write a page, and confirm it reaches the server.
+3. Walk the four behaviours nothing has ever tested: the tray menu, closing to the tray,
+   launching a second time (the running window should come forward), and a Pomodoro firing a
+   native notification.
+4. Attach a line about anything you found, then publish.
+
+The release is a draft and marked pre-release on purpose: **Linux is the only tested platform.**
+Windows and macOS are built because the code compiles for them. Nothing is signed, so SmartScreen
+and Gatekeeper will both warn on first run.
+
+A new backend address means a new binary for everyone, because there is no auto-updater and no
+runtime configuration.
+
 ## Deliberately not built
 
-Auto-updater, code signing/notarization, autostart, deep links, a tightened CSP, and Windows/macOS
-bundles. Each is a decision to take on its own, not a default.
+Auto-updater, code signing/notarization, autostart, deep links, and a tightened CSP. Each is a
+decision to take on its own, not a default.
+
+Windows and macOS bundles are now *produced* by the release workflow, which is not the same as
+supported: nobody has run them.

@@ -52,6 +52,10 @@ FastAPI `:18000` · Vite `:15173` (started by Playwright). See `scripts/e2e-stac
 | 4 | `backlinks.spec.ts` | a page lists who links to it and forgets a link that is deleted · a page that writes the title without linking it shows as a mention |
 | 4 | `related.spec.ts` | a page suggests another that shares distinctive vocabulary, and leaves an unrelated one out |
 | 4 | `ask-notes.spec.ts` | a question is answered from the matching page and cites it · the answer reaches the page only on request · an unanswerable question spends no request · no engine, no offer |
+| 4 | `page-titles.spec.ts` | blank pages are numbered (Untitled, Untitled 2…) · an app-chosen name selects itself so typing replaces it · naming one frees its number |
+| 4 | `page-stamps.spec.ts` | a page shows when it was created, and stays quiet about "edited" in the same sitting |
+| 4 | `empty-page.spec.ts` | a blank page offers no comment box and no Summarize · both arrive with the first word · a thread never disappears |
+| 4 | `personalization.spec.ts` | font and size preview on the open page · Cancel and Escape put back exactly what was there · Save survives a reload |
 | 4 | `desktop-auth.spec.ts` | the browser app never receives the session token · the desktop shell does, and it authenticates the API |
 | 4 | `e2e-pwa/pwa.spec.ts` | service worker precaches the shell **and the SQLite wasm** · manifest is installable (192 + 512 + maskable icons, all served) · reload with the network off still renders |
 
