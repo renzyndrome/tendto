@@ -21,7 +21,7 @@ import { useVisibleWorkspaces } from "../../lib/use-workspaces";
 import { createWorkspace } from "../../lib/workspaces";
 import { useUiStore } from "../../stores/ui";
 import { NotificationToggle } from "./notification-toggle";
-import { ThemeToggle } from "./theme-toggle";
+import { Personalization } from "./personalization";
 import { WorkspaceSettings } from "./workspace-settings";
 import { WorkspaceSwitcher } from "./workspace-switcher";
 
@@ -48,6 +48,7 @@ export function Sidebar() {
   const [creatingWorkspace, setCreatingWorkspace] = useState(false);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [personalizationOpen, setPersonalizationOpen] = useState(false);
 
   // Never count or offer a workspace the server doesn't acknowledge — the shared hook is where
   // that rule lives, so the calendar and the switcher can't drift apart (see lib/bootstrap.ts).
@@ -174,6 +175,10 @@ export function Sidebar() {
         onCreate={(name) => void handleNewWorkspace(name)}
         onOpenSettings={() => setSettingsOpen(true)}
       />
+      {personalizationOpen ? (
+        <Personalization onClose={() => setPersonalizationOpen(false)} />
+      ) : null}
+
       {settingsOpen && workspaceId ? (
         <WorkspaceSettings
           workspaceId={workspaceId}
@@ -241,7 +246,9 @@ export function Sidebar() {
       </nav>
 
       <div className="space-y-0.5 border-t border-line px-3 py-3">
-        <ThemeToggle />
+        {/* Theme used to cycle from here. It lives inside Personalization now, beside the two
+            other things that decide how the app looks — one row instead of three. */}
+        <SidebarButton label="Personalization" onClick={() => setPersonalizationOpen(true)} />
         <NotificationToggle />
         <button
           type="button"

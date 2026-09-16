@@ -6,12 +6,19 @@ import { App } from "./app";
 import { db, restoreSession } from "./lib/powersync/client";
 import { primeDesktopNotifications } from "./lib/notifications";
 import { installServiceWorker } from "./lib/pwa";
+import { applyPersonalization, readPersonalization } from "./lib/personalization";
 import { watchSystemTheme } from "./stores/theme";
 import "./index.css";
 
 // Keep "system" theme following the OS for the app's lifetime. The initial class is already
 // on <html> from the inline script in index.html (which runs before first paint).
 watchSystemTheme();
+
+// Apply the stored font and size through the real code path, even though the inline script has
+// already set both. It makes ONE spelling of each stack authoritative: without this the values
+// in force came from the CSS fallbacks until something changed them, so cancelling a preview
+// restored an equivalent but differently-worded stack.
+applyPersonalization(readPersonalization());
 
 // Offline cold boot: the service worker precaches the bundle and the SQLite wasm, so the
 // app opens with no network. Also schedules the periodic update check — see lib/pwa.ts.
