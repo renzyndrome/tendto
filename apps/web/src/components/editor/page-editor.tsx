@@ -9,8 +9,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useExternalEdit } from "../../lib/blocks/external-edit";
+import { exactTime, shortDate, timeAgo } from "../../lib/comments/format";
 import { loadBlocks, pageOwner, type BlockRow } from "../../lib/blocks/serialize";
 import { clearDraft, draftKey, onPageHidden, readDraft, writeDraft } from "../../lib/drafts";
+import { usePageStamps } from "../../lib/page-stamps";
 import { renamePage } from "../../lib/pages";
 import { db } from "../../lib/powersync/client";
 import { usePresence } from "../../lib/presence/use-presence";
@@ -115,6 +117,7 @@ function PageEditorInner({
         <PresenceBar others={others} />
       </div>
       <PageTitle pageId={pageId} initialTitle={initialTitle} />
+      <PageStamps pageId={pageId} />
       {external.changed ? <UpdatedElsewhere onReload={onReload} /> : null}
       <BlockEditor
         owner={pageOwner(pageId)}
@@ -133,6 +136,32 @@ function PageEditorInner({
         />
       </div>
     </div>
+  );
+}
+
+/**
+ * When this page was made, and when it was last touched — one quiet line under the title.
+ *
+ * Renders nothing until both reads have settled, rather than flickering a wrong date into
+ * place. "Edited" is dropped when it would only repeat the creation date, which is the common
+ * case for a page written in one sitting.
+ */
+function PageStamps({ pageId }: { pageId: string }) {
+  const { createdAt, editedAt } = usePageStamps(pageId);
+  if (createdAt === null) return null;
+
+  const edited = editedAt !== null && editedAt - createdAt > 60_000;
+
+  return (
+    <p data-testid="page-stamps" className="-mt-2 mb-4 text-xs text-subtle">
+      <span title={exactTime(createdAt)}>Created {shortDate(createdAt)}</span>
+      {edited ? (
+        <>
+          <span aria-hidden> · </span>
+          <span title={exactTime(editedAt)}>Edited {timeAgo(editedAt)}</span>
+        </>
+      ) : null}
+    </p>
   );
 }
 
