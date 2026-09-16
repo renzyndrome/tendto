@@ -16,12 +16,12 @@
  *  - **Our own saves are told apart from theirs by the writer, not guessed at.** `writeBlocks`
  *    publishes the fingerprint of what it just wrote (see `self-writes.ts`). Without that,
  *    every autosave would announce itself as somebody else's edit.
- *  - **Only a reading of the replica can raise the notice — never a publish.** An earlier
- *    version also re-decided when a self-write was published, which compared the new baseline
- *    against a not-yet-refreshed reading and raised a false alarm on the writer's own save.
- *    A publish now only records "this fingerprint is ours"; the decision waits for the read.
- *    So a missed or coalesced notification can at worst leave the notice unshown, never shown
- *    wrongly.
+ *  - **Only a LOADED reading of the replica can raise the notice — never a publish, and never
+ *    the loading state.** An earlier version also re-decided when a self-write was published,
+ *    which compared the new baseline against a not-yet-refreshed reading and raised a false
+ *    alarm on the writer's own save. A publish now only records "this fingerprint is ours";
+ *    the decision waits for the read. So a missed or coalesced notification can at worst leave
+ *    the notice unshown, never shown wrongly.
  *
  * Scope: the owner's BLOCKS — the body, which is what gets silently overwritten. A title
  * renamed on another device is not reported here.
@@ -49,7 +49,7 @@ export interface ExternalEdit {
 
 export function useExternalEdit(owner: BlockOwner): ExternalEdit {
   const column = owner.kind === "page" ? "page_id" : "item_id";
-  const { data: rows } = useQuery<StampRow>(
+  const { data: rows, isLoading } = useQuery<StampRow>(
     `SELECT id, updated_at FROM blocks WHERE ${column} = ?`,
     [owner.id],
   );
@@ -85,7 +85,18 @@ export function useExternalEdit(owner: BlockOwner): ExternalEdit {
   );
 
   useEffect(() => {
-    if (!rows) return;
+    /*
+     * `isLoading` is the whole guard, and it is not defensive tidiness.
+     *
+     * The hook emits `data: []` with `isLoading: true` BEFORE its first read of the replica —
+     * an empty array is the placeholder, not an answer. `[]` is truthy, so a `!rows` check
+     * sails past it, the empty-document fingerprint gets adopted as the baseline, and the real
+     * rows arriving a tick later read as somebody else's edit. That put the notice on every
+     * page that already had content, on a single device, every time it was opened. It cleared
+     * as soon as you typed (the next self-write matched) and came straight back after Reload,
+     * which is exactly what made it look like a sync problem rather than a loading one.
+     */
+    if (isLoading || !rows) return;
     const current = fingerprintRows(rows);
     latest.current = current;
 
@@ -105,7 +116,7 @@ export function useExternalEdit(owner: BlockOwner): ExternalEdit {
       return;
     }
     setChanged(current !== baseline.current);
-  }, [rows]);
+  }, [rows, isLoading]);
 
   const adopt = useCallback(() => {
     baseline.current = latest.current;
