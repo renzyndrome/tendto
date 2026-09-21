@@ -1,6 +1,6 @@
 [package]
 name = "tendto-desktop"
-version = "0.1.0"
+version = "0.2.0"
 description = "TendTo desktop shell"
 edition = "2021"
 # tauri-plugin-powersync's MSRV.
