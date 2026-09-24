@@ -223,6 +223,9 @@ version tag.
 Actions → **Variables**, not Secrets — they are public URLs): `VITE_API_URL`, `VITE_AUTH_URL` and
 `VITE_POWERSYNC_URL`, pointing at the deployed backend from `docs/deploy-dokploy.md`.
 
+For tendto.work they are `https://api.tendto.work`, `https://auth.tendto.work` and
+`https://sync.tendto.work`, and they are already set on the repository.
+
 They are not optional. Those URLs are **compiled into the bundle**, so a build without them
 produces an app that starts, signs nobody in, and looks like it is merely offline. The Vite config
 refuses to build a desktop release rather than ship that.
