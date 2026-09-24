@@ -255,9 +255,49 @@ async def test_status_reports_a_working_engine_and_its_tasks(client: AsyncClient
 
     assert body["engine"] == "claude-cli"
     assert body["available"] is True
-    assert [task["key"] for task in body["tasks"]] == list(TASKS)
-    # Exactly one whole-document task today (summarize); the rest act on a selection.
-    assert [task["key"] for task in body["tasks"] if task["whole_document"]] == ["summarize"]
+    # The curated menu, plus the recap prompt, which is carried for local engines and belongs
+    # to no menu at all (see the scope test below).
+    assert [task["key"] for task in body["tasks"]] == [*TASKS, "recap"]
+    assert [task["key"] for task in body["tasks"] if task["whole_document"]] == [
+        "summarize",
+        "recap",
+    ]
+
+
+async def test_status_ships_the_system_prompt_for_every_task(client: AsyncClient) -> None:
+    """A local engine builds its own prompt, so the server must hand over the real one.
+
+    Pinned because a client-side copy would drift, and the thing that would drift away first is
+    INJECTION_RULE — which matters most precisely where the engine is an agentic CLI.
+    """
+    _use(FakeProvider(name="claude-cli"))
+
+    body = (await client.get("/ai/status")).json()
+
+    prompts = {task["key"]: task["system"] for task in body["tasks"]}
+    for key, task in TASKS.items():
+        assert prompts[key] == task.system
+        assert USER_TEXT_MARKER in prompts[key]
+    assert body["user_text_marker"] == USER_TEXT_MARKER
+
+
+async def test_the_recap_prompt_belongs_to_neither_menu(client: AsyncClient) -> None:
+    """It rides on the task list only so a local engine can write the evening recap.
+
+    Its scope is matched by neither the editor nor the command palette, and it is not in TASKS,
+    so /ai/compose cannot run it either.
+    """
+    _use(FakeProvider(name="claude-cli"))
+
+    body = (await client.get("/ai/status")).json()
+    recap = next(task for task in body["tasks"] if task["key"] == "recap")
+
+    assert recap["scope"] == "recap"
+    assert recap["system"]
+    assert "recap" not in TASKS
+
+    refused = await client.post("/ai/compose", json={"task": "recap", "text": "anything"})
+    assert refused.status_code == 400
 
 
 async def test_status_reports_unavailable_when_offline(client: AsyncClient) -> None:
