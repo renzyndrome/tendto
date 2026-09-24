@@ -34,7 +34,11 @@ reqwest = { version = "0.13", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-tokio = { version = "1", features = ["sync"] }
+# "process"/"io-util"/"time" are for src/ai.rs, which spawns the user's own coding-agent
+# CLI and reads its output line by line under a deadline.
+tokio = { version = "1", features = ["sync", "process", "io-util", "time"] }
+# The AI subprocess runs in an empty scratch directory, so its file tools find nothing.
+tempfile = "3"
 
 [dev-dependencies]
-tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt"] }
