@@ -1,6 +1,6 @@
 ---
 name: ai-engines
-description: The three AI engines (CLI/API/fallback), why CLI mode is dev-only, and the containment around shelling out to claude -p
+description: The three AI engines (CLI/API/fallback), why CLI mode is dev-only ON THE SERVER, the desktop shell running the user's own CLI, and the containment around shelling out to claude -p
 metadata:
   type: project
 ---
@@ -21,11 +21,17 @@ codex cli".
 - The fallback keeps dev and the entire test suite network-free, and the e2e recap spec
   depends on its exact output (see below).
 
-## CLI mode is a dev/self-host convenience, NOT a SaaS path
+## SERVER-side CLI mode is a dev/self-host convenience, NOT a SaaS path
 
 Two reasons, both hard: a personal Claude/ChatGPT subscription serving *other users'* requests
 is against the vendors' subscription terms, and the CLI is a real agentic process on the server
-host. Containment in `CliChatProvider`, in case user content in the digest tries to steer it:
+host.
+
+**Both objections are about the SERVER, and that is the whole distinction.** Since 2026-09-21
+the desktop shell runs the user's OWN CLI on their OWN machine for their OWN request
+(`apps/desktop/src-tauri/src/ai.rs`) — see the section at the end of this file. That is
+explicitly what the vendors' plans cover. The rule above still stands unchanged for
+`CliChatProvider`: a hosted multi-tenant API must use API keys. Containment in `CliChatProvider`, in case user content in the digest tries to steer it:
 prompt over **stdin** (argv leaks into `ps` and has length limits), cwd = an **empty scratch
 dir** (file-reading tools find nothing), and `--max-turns 1` (no tool-use round trip). Also:
 empty stdout is an ERROR, not an empty recap delivered as if real.
@@ -59,7 +65,7 @@ The summary prompt now demands **plain text, no markdown** — the recap view re
 
 ## The response is structured, and the UI treats prose as optional
 
-`POST /ai/daily-summary` returns `{start, end, summary, engine, activity}` — the structured
+`POST /ai/daily-summary` returns `{start, end, summary, digest, engine, activity}` — the structured
 digest rides along so the UI styles facts (overdue rows in `danger`, upcoming in `warn`, stat
 chips) instead of parsing a text blob. When `engine == "offline"` the prose is HIDDEN: the
 fallback text IS the digest, so showing both would duplicate. The `warn` token was added for
@@ -277,3 +283,87 @@ would have fixed nothing for anyone who had actually copied the example file. Sa
 applies to `AI_MODEL`, and both are trimmed (an invisible trailing space in a `.env` line would
 otherwise break the URL). `test_ai_engine_selection.py` pins the whole matrix: CLI wins, then a
 key, then offline.
+
+
+## The desktop runs the USER's own subscription (2026-09-21)
+
+Renzy is deploying the backend to a Dokploy VPS and wanted users on their own Claude/Codex plan
+rather than the operator paying for everyone. The answer is a second platform seam, mirroring the
+PowerSync one: `apps/web/src/lib/ai/engine-contract.ts` with `engine.web.ts` / `engine.desktop.ts`,
+aliased by Vite as `@tendto-ai-engine`. Rust does the running, in `src-tauri/src/ai.rs`.
+
+**Spawn the binary; do NOT integrate the agent SDK.** This is the single most valuable line here.
+Usage through the installed `claude` CLI draws on the subscription; going through the SDK/ACP
+integration draws on a separate, far pricier credit pool. Zed's users found this the hard way.
+Anthropic announced a repricing that would have moved third-party app usage to that pool and then
+**paused** it ("nothing has changed") — **watch item**: if it lands, spawning the binary stays on
+the cheaper side, which is another reason not to "modernise" this into an SDK later.
+
+**Web and phone changed by ZERO lines, deliberately.** The graceful version already existed: with
+no `AI_API_KEY` the server reports unavailable and every AI affordance simply does not render. So
+web AI is a runtime decision, not a code path. Browser-stored API keys were considered and
+rejected — Anthropic advises against keys in browser code, and a key is not a subscription anyway.
+
+**The prompts stay owned by the server.** `/ai/status` now ships each task's `system` plus
+`user_text_marker`, cached on the device under `tendto:ai-tasks` so a local engine still works on
+a plane. A client-side copy would drift, and the first thing to drift away is `INJECTION_RULE` —
+which matters MORE here: an agentic CLI, on your own machine, fed text a colleague wrote in a
+shared workspace. `prompt.ts` ports `_prepare`'s assembly and says so in a comment; change one,
+change the other.
+
+**The recap is SPLIT, not moved.** Gathering activity needs a membership check and must stay
+server-side (it is also what makes the recap work on a phone); only the prose moves. New
+`prose: bool = True` on `DailySummaryRequest`, new `digest: str` on the response. A knock-on
+worth knowing: the evening NOTIFICATION never showed the prose (its body is built from the
+structured digest), so it now sends `prose: false` unconditionally and spends nothing at all.
+The recap prompt rides on the task list as a pseudo-task with `scope: "recap"`, built in the
+router rather than added to `TASKS` — so `/ai/compose` still rejects it, and neither menu shows
+it. Its system prompt gets `INJECTION_RULE` appended, which `summarize()` does not need because
+the server never wraps the digest in the marker.
+
+**Every menu now matches its OWN scope.** `block-editor.tsx` filtered `scope !== "search"`, which
+would have put "Daily recap" straight into the rewrite menu. It matches `scope === "editor"` now.
+Any future scope is excluded by default rather than included by default.
+
+**PATH is the whole risk, and it is worse than on a server.** A GUI app launched from a dock icon
+or a `.desktop` entry inherits a bare environment — none of the shell profile that put `claude`
+there has run, and under nvm it needs `node` too. `locate()` falls back to `$SHELL -l -c
+'command -v claude'` and caches the absolute path. **Launching from a terminal proves nothing**:
+that process has your interactive PATH. The manual probe in `docs/desktop.md` says to launch from
+the icon.
+
+**Other decisions worth not re-litigating:**
+- `ai_run` RETURNS the finished text and emits only `ai://delta`. No `done`/`error` events, so
+  there is no ordering race between the last delta and the end of the run.
+- Defaulting to a found CLI when nothing is chosen: it is the user's own plan, costs the operator
+  nothing, and is the only option where the text never leaves the machine. The settings row
+  states what is running, so it is a default and not a surprise. **Only a VERIFIED engine may be
+  the implicit default** — `CliSpec.verified` in ai.rs, carried through to `LocalEngine.verified`
+  so there is one source of truth.
+- **Containment is per engine, and the injection rule is not it.** The rule is a request to a
+  model; the flags are the boundary. `claude` gets `--max-turns 1`; `codex` has no equivalent, so
+  it gets `--sandbox read-only` (no writes, no network — which is also `codex exec`'s default, so
+  a wrong flag fails closed). A security review caught that codex had neither, and could have
+  become the silent default on a machine with codex and no claude. `every_engine_is_contained`
+  in ai.rs pins both.
+- **"Off" has to reach the recap.** The recap is the one AI feature nobody presses a button for,
+  so gating only the button surfaces left it running. `recap-fetch.ts` reads the stored choice
+  directly rather than `available`, because `available` is ALSO false when the server merely has
+  no engine — and that case must keep asking, or the web recap would lose its prose.
+- **A failed local engine reports `local-failed`, not `offline`.** They need different words: one
+  is fixed in the operator's .env, the other on this machine. Showing "set AI_CLI in .env" to a
+  desktop user whose own CLI just failed sends them somewhere with nothing to change. This is the
+  exact failure PATH produces, so it is the message people will actually see.
+- **`login_shell_path` must null stdin and set `kill_on_drop`.** `Command::output()` pipes only
+  stdout and stderr, so stdin is INHERITED. A login shell that blocks on it (a profile with an
+  interactive prompt) then hangs, and dropping the timed-out future does NOT kill it — leaving a
+  detached shell holding the app's stdin, plus a false "not found" for an installed CLI.
+- **`buildUserMessage` checks its own output at run time.** apps/web has no unit-test runner, so
+  nothing would have failed if the marker or the question/sources order were changed — silently
+  removing half the injection defence on the one path with an agentic engine. It throws instead.
+  The cached task list is validated the same way: a prompt that does not contain the marker
+  cannot be the server's, and is dropped.
+- `take()`/`gate()` in `app/ai/limits.py` never see a local run, and should not — it is the
+  user's own subscription. A `Semaphore(1)` in Rust stops a burst of clicks forking several
+  agents.
+- AI settings is its OWN sidebar row, not part of Personalization: a capability, not a look.

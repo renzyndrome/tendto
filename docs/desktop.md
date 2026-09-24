@@ -15,7 +15,8 @@ owns a real SQLite file under the app's data directory. Everything else the shel
 native notifications, a session that survives updates — is comfort on top of that.
 
 The honest framing: Rust does not make the editor faster. The editor is DOM-bound and already
-local-instant. What Rust buys is durability, background sync from the tray, and native reminders.
+local-instant. What Rust buys is durability, background sync from the tray, native reminders, and
+one thing a browser cannot do at all: running your own AI subscription (see below).
 
 ## One-time setup
 
@@ -92,7 +93,9 @@ means building and installing again — see the last section.
 | Backend connector (JWT + upload) | `src-tauri/src/connector.rs` |
 | Session token, 0600 on disk | `src-tauri/src/session.rs` |
 | Commands the webview may call | `src-tauri/src/commands.rs` |
-| JS side of the seam | `apps/web/src/lib/powersync/platform.desktop.ts` |
+| Running your own AI CLI | `src-tauri/src/ai.rs` |
+| JS side of the sync seam | `apps/web/src/lib/powersync/platform.desktop.ts` |
+| JS side of the AI seam | `apps/web/src/lib/ai/engine.desktop.ts` |
 
 Two things are worth knowing before changing any of it:
 
@@ -109,8 +112,9 @@ as a set — see `.claude/memory/powersync-version-alignment.md`.
 
 Verified on Linux (Ubuntu 25.04, WebKitGTK 2.50):
 
-- `cargo clippy -D warnings` clean; 10 Rust unit tests cover the upload payload contract (the exact
-  JSON `POST /sync/upload` expects), JWT expiry parsing, and the session file's 0600 permissions.
+- `cargo clippy -D warnings` clean; 15 Rust unit tests cover the upload payload contract (the exact
+  JSON `POST /sync/upload` expects), JWT expiry parsing, the session file's 0600 permissions, and
+  the AI CLI's stream parsing, prompt assembly and binary detection (against a planted fake).
 - The shell launches, renders the app, and restores its session from the Rust-side token.
 - The **whole sync loop**: local writes drained from `ps_crud` via `POST /sync/upload` (200), rows
   landing in Postgres, and a page created elsewhere appearing in the shell's own SQLite file and
@@ -122,8 +126,93 @@ Verified on Linux (Ubuntu 25.04, WebKitGTK 2.50):
   could have sunk the shell on Linux. If rendering ever glitches on another machine, try
   `WEBKIT_DISABLE_DMABUF_RENDERER=1` before concluding anything.
 
-**Not yet verified:** tray menu, close-to-tray, second-launch focus, and a native notification
-firing from a Pomodoro.
+**Not yet verified:** tray menu, close-to-tray, second-launch focus, a native notification firing
+from a Pomodoro, and the live AI path end to end (see the manual probe below).
+
+## Connect your own AI subscription
+
+The desktop shell can run AI on **your** machine, using the `claude` or `codex` CLI you already
+have installed and signed in. Nothing is sent to the server, the operator pays nothing, and it
+works with no API key.
+
+Sidebar → **AI engine**. The list shows every CLI found on this machine, then the TendTo server
+(only when the server has an engine of its own), then Off. With nothing chosen, a **verified** CLI
+that is present wins: it is your own subscription, and it is the only option where your text does
+not leave the machine. The setting is per device. Off means off, including the evening recap.
+
+`claude` is verified. `codex` is detected and offered but **never chosen by default**, and you
+have to pick it on purpose. See the containment note below for why that distinction matters.
+
+### Containment
+
+The engines read your pages, and in a shared workspace a page can be something a colleague wrote.
+The system prompt tells the model to treat that text as data and never as instructions, but that
+is a request to a model, not a boundary. The boundary is the flags:
+
+| | Boundary |
+| --- | --- |
+| `claude` | `--max-turns 1`: no tool-use round trip is possible at all |
+| `codex` | `--sandbox read-only`: no file writes, no network |
+
+Both also run in an empty scratch directory, with the prompt over stdin rather than argv, under a
+120-second timeout. `codex exec` is read-only by default already, so the flag is belt and braces:
+if it were ever wrong, codex would exit with an error rather than run unconstrained.
+
+`codex` is marked unverified because nobody has run it here. Its argv and that sandbox flag are
+taken from its documentation, not from a test.
+
+### Why the binary is spawned rather than an SDK embedded
+
+This is a billing decision, not a style one. Usage through the installed CLI draws on your
+subscription. Going through the agent SDK draws on a **separate, pricier credit pool**, which
+would defeat the entire point of using a plan you already pay for.
+
+### The trap: PATH
+
+An app launched from a dock icon or a `.desktop` entry inherits a **bare** environment. None of
+the shell profile that put `claude` on your PATH has run, so a CLI installed under nvm is simply
+invisible. `claude` there is also a node script, so it needs `node` on PATH too.
+
+`ai.rs` handles this by asking a login shell (`$SHELL -l -c 'command -v claude'`) when the
+inherited PATH comes up empty, and caches the absolute path. **Test it by launching the installed
+app from its icon, not from a terminal.** Starting it from a terminal proves nothing: that
+process inherits your interactive PATH and will find the CLI either way.
+
+If the AI row says "No CLI found", it also says what it looked for.
+
+### What runs where
+
+| | Facts | Prose |
+| --- | --- | --- |
+| Recap, server engine | server | server |
+| Recap, local engine | server | this machine |
+| Recap, AI off | server | nothing written |
+| Summarize / Ask my notes, local engine | n/a | this machine |
+
+The recap is **split**, not moved. Gathering activity reads Postgres behind a membership check
+and has to stay on the server, which is also what makes the recap work on a phone. Only the prose
+moves. When a local engine is active the client sends `prose: false`, and the server returns the
+same `digest` it would have fed a model.
+
+The **prompts always come from the server** (`GET /ai/status` ships each task's `system`). They
+carry the prompt-injection rule, and that matters more here, not less: the engine is an agentic
+CLI on your own machine and the text can be something a colleague wrote in a shared workspace.
+They are cached on the device so local AI still works with no network.
+
+### Manual probe
+
+Nothing automated can cover this path, so check it by hand after any change to `ai.rs` or
+`engine.desktop.ts`:
+
+1. `make desktop` on a machine with `claude` installed.
+2. Sidebar → AI engine shows "Claude CLI found" and the absolute path.
+3. Open a page with a few paragraphs and press Summarize. The text streams in.
+4. Nothing appears in the API log: no `/ai/compose/stream` request.
+5. Set the engine to Off. The AI buttons disappear, and `/recap` shows the facts with no prose
+   and no "point the server at an AI engine" hint.
+6. Rename the CLI temporarily so it cannot be found, then open `/recap`. It should say
+   "Local engine failed", not the server's .env advice.
+7. **Install the build and launch it from the icon**, then repeat step 2. This is the PATH test.
 
 ## Releasing
 
