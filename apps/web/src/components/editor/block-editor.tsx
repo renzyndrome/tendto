@@ -27,7 +27,7 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { loadEngineStatus, type AiTask } from "../../lib/ai/compose";
+import { useEngineStatus, type AiTask } from "../../lib/ai/compose";
 import { AiPanel } from "./ai-panel";
 import { PAGE_LINK_ATTR, PAGE_LINK_TYPE } from "./page-link";
 import { PageLinkMenu } from "./page-link-menu";
@@ -163,7 +163,6 @@ export function BlockEditor({
    * descriptions. A card description is a sentence or two, and "summarize" is meaningless
    * there — the dialog stays as spare as docs/planning/03 asks it to be.
    */
-  const [aiTasks, setAiTasks] = useState<AiTask[] | null>(null);
   const [aiRequest, setAiRequest] = useState<{ source: string; task?: string } | null>(null);
   /** How to put an accepted result back into the document. Set when the request is opened. */
   const applyRef = useRef<(text: string) => void>(() => undefined);
@@ -358,22 +357,19 @@ export function BlockEditor({
     };
   }, [navigate]);
 
-  // Asked once per session and cached in the module; an empty list means no engine, and every
-  // AI affordance simply never renders.
-  useEffect(() => {
-    if (!aiEnabled) return;
-    let cancelled = false;
-    void loadEngineStatus().then((status) => {
-      // Editor tasks only: "Ask my notes" is answered from the command palette, and a
-      // question-shaped row in a rewrite menu would have nothing to rewrite.
-      if (!cancelled) {
-        setAiTasks(status.available ? status.tasks.filter((task) => task.scope !== "search") : []);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [aiEnabled]);
+  // Asked once per session, and again if the device's engine changes. An empty list means no
+  // engine, and every AI affordance simply never renders.
+  //
+  // Editor tasks ONLY, matched by name rather than by exclusion: "Ask my notes" is answered
+  // from the command palette, and the recap prompt belongs to no menu at all. A task added
+  // server-side under a new scope stays out of here by default.
+  const engineStatus = useEngineStatus(aiEnabled);
+  const aiTasks: AiTask[] | null =
+    engineStatus === null
+      ? null
+      : engineStatus.available
+        ? engineStatus.tasks.filter((task) => task.scope === "editor")
+        : [];
 
   /*
    * Offer this page as somewhere an answer can be put. "Ask my notes" runs in the command

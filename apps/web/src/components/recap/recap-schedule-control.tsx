@@ -15,7 +15,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 
-import { engineLabel, loadEngineStatus } from "../../lib/ai/compose";
+import { engineLabel, useEngineStatus } from "../../lib/ai/compose";
 import {
   notificationsEnabled,
   requestNotificationPermission,
@@ -36,7 +36,6 @@ type SendState = "idle" | "sending" | "sent" | "failed";
 export function RecapScheduleControl({ onOpenRecap }: { onOpenRecap: () => void }) {
   const [schedule, setSchedule] = useState<RecapSchedule | null>(null);
   const [notifications, setNotifications] = useState(false);
-  const [engine, setEngine] = useState<string | null>(null);
   const [send, setSend] = useState<SendState>("idle");
 
   // Read on mount, not during render: both are browser state that can change while the tab is
@@ -44,8 +43,11 @@ export function RecapScheduleControl({ onOpenRecap }: { onOpenRecap: () => void 
   useEffect(() => {
     setSchedule(readSchedule());
     setNotifications(notificationsEnabled());
-    void loadEngineStatus().then((status) => setEngine(status.engine));
   }, []);
+
+  // Which engine writes the prose. On the desktop that can change while this is on screen, so
+  // it is read through the hook rather than captured once.
+  const engine = useEngineStatus()?.engine ?? null;
 
   /** Grant + switch on in one click. "Go and find it in the sidebar" is not a fix. */
   const enableNotifications = useCallback(async () => {

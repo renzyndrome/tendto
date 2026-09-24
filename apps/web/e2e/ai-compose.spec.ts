@@ -11,11 +11,13 @@ import { expectNewPageOpened } from "./helpers/pages";
  * "Discard" leave it alone — and none of that needs real inference. The prompts, the task
  * registry and every failure mode are covered by pytest in app/tests/test_ai_compose.py.
  */
+// `system` mirrors the real /ai/status, which ships each task's prompt so a local engine can
+// send it. The web path never uses it; a stub that omitted it would drift from the contract.
 const TASKS = [
-  { key: "summarize", label: "Summarize", whole_document: true, scope: "editor" },
-  { key: "improve", label: "Improve writing", whole_document: false, scope: "editor" },
-  { key: "shorten", label: "Make shorter", whole_document: false, scope: "editor" },
-  { key: "fix", label: "Fix spelling & grammar", whole_document: false, scope: "editor" },
+  { key: "summarize", label: "Summarize", whole_document: true, scope: "editor", system: "S" },
+  { key: "improve", label: "Improve writing", whole_document: false, scope: "editor", system: "I" },
+  { key: "shorten", label: "Make shorter", whole_document: false, scope: "editor", system: "H" },
+  { key: "fix", label: "Fix spelling & grammar", whole_document: false, scope: "editor", system: "F" },
 ];
 
 /** Pretend an engine is (or isn't) configured, whatever the dev .env actually says. */
@@ -28,6 +30,7 @@ async function stubEngine(page: Page, options: { available: boolean; reply?: str
         engine: options.available ? "stub" : "offline",
         available: options.available,
         tasks: options.available ? TASKS : [],
+        user_text_marker: "<<<USER TEXT>>>",
       }),
     }),
   );
