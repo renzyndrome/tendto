@@ -133,6 +133,19 @@ async function writeBlocks(
 
   await db.writeTransaction(async (tx) => {
     /*
+     * The owner must still exist. A page deleted while its editor was open (by a teammate, or by
+     * this device once a delete's Undo window closed) would otherwise get blocks whose page
+     * Postgres no longer has: the upload is rejected, and the ordered queue wedges for good.
+     * Thrown rather than skipped, so the editor keeps the text marked unsaved and retries on the
+     * next edit: an owner that simply has not synced down yet is still saved once it arrives.
+     */
+    const ownerTable = owner.kind === "page" ? "pages" : "items";
+    const alive = await tx.getAll<{ id: string }>(`SELECT id FROM ${ownerTable} WHERE id = ?`, [
+      owner.id,
+    ]);
+    if (alive.length === 0) throw new Error(`Block owner ${owner.kind}:${owner.id} is gone`);
+
+    /*
      * Which of these blocks already exist? This SELECT is not an optimisation — it is the only
      * reliable way to choose between UPDATE and INSERT here.
      *

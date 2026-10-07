@@ -39,3 +39,6 @@ bucket_definitions:
       SELECT request.user_id() as user_id
     data:
       - SELECT * FROM focus_sessions WHERE user_id = bucket.user_id
+      # Starred pages and collections. Personal: which pages someone starred never reaches a
+      # teammate, even though the pages themselves do.
+      - SELECT * FROM favorites WHERE user_id = bucket.user_id

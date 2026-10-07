@@ -1,11 +1,10 @@
 /**
- * Left sidebar: workspace switcher, the Pages tree (folders and pages, see page-tree.tsx) +
- * Collections list, create/delete actions, search/calendar/export, theme toggle, sign-out. Lists are PowerSync reactive
- * queries — they re-render instantly on any local or synced change. Creating/deleting a page
- * or collection is a local write; PowerSync uploads it. Creating a WORKSPACE is the exception
- * and goes through the API (see lib/workspaces.ts).
+ * Left sidebar: workspace switcher, the Pages and Collections trees (folders and items, see
+ * sidebar-tree.tsx), search/calendar/export, theme toggle, sign-out. The trees are PowerSync
+ * reactive queries — they re-render instantly on any local or synced change. Creating/deleting a
+ * page or collection is a local write; PowerSync uploads it. Creating a WORKSPACE is the
+ * exception and goes through the API (see lib/workspaces.ts).
  */
-import { useQuery } from "@powersync/react";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 
@@ -13,24 +12,23 @@ import { signOut } from "../../lib/auth/client";
 import { clearAuthToken } from "../../lib/auth/token";
 import { clearSessionToken } from "../../lib/auth/session-token";
 import { bootstrapWorkspaces } from "../../lib/bootstrap";
-import { createCollection, deleteCollectionCascade } from "../../lib/collections";
+import { toDateKey } from "../../lib/calendar";
+import { openDailyNote } from "../../lib/daily-note";
 import { exportWorkspace } from "../../lib/export";
 import { isDesktop } from "../../lib/platform";
 import { disconnectAndClearDb } from "../../lib/powersync/client";
 import { useVisibleWorkspaces } from "../../lib/use-workspaces";
 import { createWorkspace } from "../../lib/workspaces";
+import { hiddenIdsNow, usePendingDelete } from "../../stores/pending-delete";
 import { useUiStore } from "../../stores/ui";
 import { AiSettings } from "./ai-settings";
+import { CollectionTree } from "./collection-tree";
+import { FavoritesSection } from "./favorites-section";
 import { NotificationToggle } from "./notification-toggle";
 import { PageTree } from "./page-tree";
 import { Personalization } from "./personalization";
 import { WorkspaceSettings } from "./workspace-settings";
 import { WorkspaceSwitcher } from "./workspace-switcher";
-
-interface CollectionRow {
-  id: string;
-  name: string;
-}
 
 export function Sidebar() {
   const navigate = useNavigate();
@@ -51,23 +49,6 @@ export function Sidebar() {
   // that rule lives, so the calendar and the switcher can't drift apart (see lib/bootstrap.ts).
   const workspaces = useVisibleWorkspaces();
   const activeWorkspace = workspaces.find((workspace) => workspace.id === workspaceId);
-
-  const { data: collections } = useQuery<CollectionRow>(
-    "SELECT id, name FROM collections WHERE workspace_id = ? ORDER BY created_at",
-    [workspaceId ?? ""],
-  );
-
-  async function handleNewCollection(): Promise<void> {
-    if (!workspaceId) return;
-    const id = await createCollection(workspaceId);
-    void navigate({ to: "/c/$collectionId", params: { collectionId: id } });
-  }
-
-  async function handleDeleteCollection(collectionId: string, name: string): Promise<void> {
-    if (!window.confirm(`Delete "${name || "Untitled"}" and its items?`)) return;
-    await deleteCollectionCascade(collectionId);
-    void navigate({ to: "/" });
-  }
 
   /** Workspace creation needs the server (see lib/workspaces.ts), so it can fail — surface it. */
   async function handleNewWorkspace(name: string): Promise<void> {
@@ -91,6 +72,17 @@ export function Sidebar() {
     if (id === workspaceId) return;
     setActiveWorkspace(id);
     void navigate({ to: "/" });
+  }
+
+  /** Today's note, made on first open. "Today" is the device's own day (see lib/daily-note.ts). */
+  async function handleDailyNote(): Promise<void> {
+    if (!workspaceId) return;
+    try {
+      const pageId = await openDailyNote(workspaceId, toDateKey(new Date()), hiddenIdsNow());
+      void navigate({ to: "/p/$pageId", params: { pageId } });
+    } catch (err) {
+      console.error("Opening the daily note failed", err);
+    }
   }
 
   async function handleExport(): Promise<void> {
@@ -126,6 +118,9 @@ export function Sidebar() {
   }
 
   async function handleSignOut(): Promise<void> {
+    // A delete still inside its Undo window is written now, so it at least has a chance to
+    // upload before the replica is cleared; if it does not make it, the rows come back.
+    await usePendingDelete.getState().flush();
     await signOut();
     clearAuthToken();
     // Desktop only: drop the bearer session token too, so the next sign-in cannot inherit it.
@@ -173,32 +168,13 @@ export function Sidebar() {
           <SidebarButton label="Calendar" onClick={() => navigate({ to: "/calendar" })} />
           <SidebarButton label="Focus" onClick={() => navigate({ to: "/focus" })} />
           <SidebarButton label="Daily recap" onClick={() => navigate({ to: "/recap" })} />
+          <SidebarButton label="Daily note" onClick={() => void handleDailyNote()} />
         </div>
 
+        <FavoritesSection workspaceId={workspaceId} />
         <PageTree workspaceId={workspaceId} />
 
-        <SectionHeader
-          label="Collections"
-          newLabel="New collection"
-          onNew={() => void handleNewCollection()}
-        />
-        <div className="mb-4 space-y-0.5">
-          {collections.length === 0 ? (
-            <p className="px-2 py-1.5 text-sm text-subtle">No collections yet</p>
-          ) : (
-            collections.map((collection) => (
-              <RowWithDelete
-                key={collection.id}
-                label={collection.name || "Untitled"}
-                deleteLabel="Delete collection"
-                onOpen={() =>
-                  navigate({ to: "/c/$collectionId", params: { collectionId: collection.id } })
-                }
-                onDelete={() => void handleDeleteCollection(collection.id, collection.name)}
-              />
-            ))
-          )}
-        </div>
+        <CollectionTree workspaceId={workspaceId} />
       </nav>
 
       <div className="space-y-0.5 border-t border-line px-3 py-3">
@@ -230,64 +206,6 @@ export function Sidebar() {
         </button>
       </div>
     </aside>
-  );
-}
-
-function SectionHeader({
-  label,
-  newLabel,
-  onNew,
-}: {
-  label: string;
-  newLabel: string;
-  onNew: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-between px-2 py-1">
-      <span className="text-xs font-medium uppercase tracking-wide text-subtle">{label}</span>
-      <button
-        type="button"
-        onClick={onNew}
-        aria-label={newLabel}
-        title={newLabel}
-        className="rounded px-1 text-base leading-none text-subtle hover:bg-hover hover:text-fg"
-      >
-        +
-      </button>
-    </div>
-  );
-}
-
-function RowWithDelete({
-  label,
-  deleteLabel,
-  onOpen,
-  onDelete,
-}: {
-  label: string;
-  deleteLabel: string;
-  onOpen: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <div className="group flex items-center rounded-md pr-1 hover:bg-hover">
-      <button
-        type="button"
-        onClick={onOpen}
-        className="flex-1 truncate px-2 py-1.5 text-left text-sm text-muted"
-      >
-        {label}
-      </button>
-      <button
-        type="button"
-        onClick={onDelete}
-        aria-label={deleteLabel}
-        title={deleteLabel}
-        className="invisible shrink-0 rounded px-1 text-subtle hover:text-danger group-hover:visible"
-      >
-        ×
-      </button>
-    </div>
   );
 }
 

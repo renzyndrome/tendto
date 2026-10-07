@@ -29,6 +29,7 @@ from app.models.core import (
     Block,
     Collection,
     Comment,
+    Favorite,
     FocusSession,
     Item,
     Membership,
@@ -49,12 +50,13 @@ TABLE_MODELS = {
     "items": Item,
     "focus_sessions": FocusSession,
     "comments": Comment,
+    "favorites": Favorite,
 }
 # Tables owned by a USER rather than a workspace: they carry `user_id` instead of
 # `workspace_id`, are authorized against the token subject, and ride the `user_private` sync
 # bucket. Personal data must never go in `workspace_content`, which fans every row out to every
 # member of the workspace. Subset of TABLE_MODELS.
-USER_OWNED_TABLES = {"focus_sessions"}
+USER_OWNED_TABLES = {"focus_sessions", "favorites"}
 # Workspace tables whose rows are ADDITIONALLY owned by their author. Membership is checked as
 # usual, then `_assert_comment_author` narrows it: only the author may edit their own row, and
 # only a workspace owner may delete someone else's. Subset of TABLE_MODELS, disjoint from

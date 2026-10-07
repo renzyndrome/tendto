@@ -124,6 +124,27 @@ async def test_focus_sessions_are_private_to_their_owner():
 
 
 @pytest.mark.asyncio
+async def test_favorites_are_private_to_their_owner():
+    """Which pages someone starred is theirs alone, even inside a shared workspace. Favorites
+    are installed by their own migration (0012), after the 0008 backstop."""
+    workspace = await seed_membership(user_id=ALICE)
+    await add_membership(user_id=BOB, workspace_id=workspace)
+    page = await seed_page(workspace_id=workspace)
+    async with TestSession() as session:
+        await session.execute(
+            text(
+                "INSERT INTO favorites (id, user_id, target_kind, target_id) "
+                "VALUES (:id, :user_id, 'page', :target_id)"
+            ),
+            {"id": uuid4(), "user_id": ALICE, "target_id": page},
+        )
+        await session.commit()
+
+    assert len(await as_app_role(ALICE, "SELECT * FROM favorites")) == 1
+    assert await as_app_role(BOB, "SELECT * FROM favorites") == []
+
+
+@pytest.mark.asyncio
 async def test_a_member_cannot_write_into_another_workspace():
     """WITH CHECK, not just USING: reading is filtered, and so is smuggling a row in."""
     alice_ws = await seed_membership(user_id=ALICE)

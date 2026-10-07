@@ -30,9 +30,12 @@ import {
   toDateKey,
 } from "../../lib/calendar";
 import { useDatedItems, type CalendarItem } from "../../lib/calendar-items";
+import { IS_COLLECTION_SQL } from "../../lib/collections";
+import { openDailyNote } from "../../lib/daily-note";
 import { formatDue, parseDue } from "../../lib/items/due";
 import { createItem, patchItem } from "../../lib/items/mutations";
 import { useVisibleWorkspaces, type WorkspaceRow } from "../../lib/use-workspaces";
+import { hiddenIdsNow } from "../../stores/pending-delete";
 import { useUiStore } from "../../stores/ui";
 
 const HOUR_HEIGHT = 56;
@@ -89,6 +92,21 @@ export function DayView({ dateKey }: { dateKey: string }) {
     });
   }
 
+  /**
+   * This day's note, made on first open. The calendar spans workspaces but a note lives in one:
+   * the active one, the same default QuickCreate uses. Keyed by the day on screen, so a
+   * malformed URL that fell back to today opens today's note rather than a broken key.
+   */
+  async function openNote(): Promise<void> {
+    if (!activeWorkspaceId) return;
+    try {
+      const pageId = await openDailyNote(activeWorkspaceId, toDateKey(day), hiddenIdsNow());
+      void navigate({ to: "/p/$pageId", params: { pageId } });
+    } catch (err) {
+      console.error("Opening the daily note failed", err);
+    }
+  }
+
   /** Move an item to a new time on this day — or to all-day, which clears the time. */
   function reschedule(item: DayItem, minutes: number | null): void {
     const time = minutes === null ? "" : minutesToTime(minutes);
@@ -129,6 +147,16 @@ export function DayView({ dateKey }: { dateKey: string }) {
           >
             ›
           </button>
+          {activeWorkspaceId ? (
+            <button
+              type="button"
+              onClick={() => void openNote()}
+              data-testid="day-daily-note"
+              className="ml-2 rounded-md px-3 py-1 text-sm text-muted hover:bg-hover hover:text-fg"
+            >
+              Daily note
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => void navigate({ to: "/calendar" })}
@@ -492,9 +520,10 @@ function QuickCreate({
   const ids = useMemo(() => workspaces.map((workspace) => workspace.id), [workspaces]);
   const { data: collections } = useQuery<{ id: string; name: string; workspace_id: string }>(
     ids.length
-      ? `SELECT id, name, workspace_id FROM collections WHERE workspace_id IN (${ids
+      ? // Folders hold no items, so a task can never be filed into one.
+        `SELECT id, name, workspace_id FROM collections WHERE workspace_id IN (${ids
           .map(() => "?")
-          .join(", ")}) ORDER BY created_at`
+          .join(", ")}) AND ${IS_COLLECTION_SQL} ORDER BY created_at`
       : "SELECT id, name, workspace_id FROM collections WHERE 1 = 0",
     ids,
   );

@@ -5,6 +5,7 @@
  * replica; PowerSync uploads them. No network code here.
  */
 import { db } from "./powersync/client";
+import { moveRow, placeRow } from "./tree-moves";
 
 /** The name a page gets before you give it one. */
 export const AUTO_TITLE = "Untitled";
@@ -118,54 +119,19 @@ export async function createFolder(
 
 /**
  * Move a page or folder under `newParentId` (null = top level). It lands last in its new place.
- *
- * Refused (returns false) when the target is the row itself or anything inside it: that would
- * make a loop no path from the top level reaches, and the whole branch would vanish from the
- * tree. The check reads the replica inside the write transaction, so it sees the same tree the
- * write lands on.
+ * Refused (false) when the target is inside the row itself; see `moveRow`.
  */
-export async function movePage(
+export async function movePage(pageId: string, newParentId: string | null): Promise<boolean> {
+  return moveRow("pages", pageId, newParentId, { appendPosition: true });
+}
+
+/** Put a page or folder at an exact spot among its siblings. See `placeRow`. */
+export async function placePage(
   pageId: string,
   newParentId: string | null,
+  orderedIds: readonly string[],
 ): Promise<boolean> {
-  if (newParentId === pageId) return false;
-  return db.writeTransaction(async (tx) => {
-    const rows = await tx.getAll<{
-      parent_id: string | null;
-      workspace_id: string;
-    }>("SELECT parent_id, workspace_id FROM pages WHERE id = ?", [pageId]);
-    const row = rows[0];
-    if (!row) return false;
-    if ((row.parent_id ?? null) === newParentId) return true; // already there
-
-    // Walk up from the target. Reaching the moved row means the target is inside it.
-    const seen = new Set<string>();
-    let cursor = newParentId;
-    while (cursor !== null && !seen.has(cursor)) {
-      if (cursor === pageId) return false;
-      seen.add(cursor);
-      const up = await tx.getAll<{ parent_id: string | null }>(
-        "SELECT parent_id FROM pages WHERE id = ?",
-        [cursor],
-      );
-      cursor = up[0]?.parent_id ?? null;
-    }
-
-    const positions = await tx.getAll<{ next: number | null }>(
-      "SELECT MAX(position) AS next FROM pages WHERE workspace_id = ?",
-      [row.workspace_id],
-    );
-    await tx.execute(
-      "UPDATE pages SET parent_id = ?, position = ?, updated_at = ? WHERE id = ?",
-      [
-        newParentId,
-        (positions[0]?.next ?? -1) + 1,
-        new Date().toISOString(),
-        pageId,
-      ],
-    );
-    return true;
-  });
+  return placeRow("pages", pageId, newParentId, orderedIds);
 }
 
 export async function renamePage(pageId: string, title: string): Promise<void> {
@@ -177,9 +143,12 @@ export async function renamePage(pageId: string, title: string): Promise<void> {
 }
 
 /**
- * Delete a page and everything under it: all descendant subpages (walked via `parent_id`) and
- * every block of each. `parent_id` isn't a DB foreign key, so the cascade is explicit here; each
- * delete syncs up and Postgres cascades the blocks too.
+ * Delete exactly these pages (and folders) and every block of each, in one transaction.
+ * `parent_id` isn't a DB foreign key, so the caller names every row: the sidebar passes the
+ * rows its tree SHOWS inside the deleted one, rather than this walking `parent_id`, because
+ * after a concurrent-move loop the tree places loop members at the top level and a raw walk
+ * would delete rows the user never saw inside it. Each delete syncs up and Postgres cascades
+ * the blocks too.
  *
  * COMMENTS ARE DELIBERATELY NOT DELETED HERE. Only a comment's author (or the workspace owner)
  * may delete it, so an editor removing a page that holds a teammate's comment would queue a
@@ -188,32 +157,6 @@ export async function renamePage(pageId: string, title: string): Promise<void> {
  * The page delete alone is enough: Postgres cascades the comments from the FK, and PowerSync
  * then removes them from every replica. The rows linger locally only until that round-trip, and
  * nothing renders them once their page is gone.
- */
-export async function deletePageCascade(pageId: string): Promise<void> {
-  const toDelete: string[] = [pageId];
-  const queue: string[] = [pageId];
-  while (queue.length > 0) {
-    const current = queue.shift() as string;
-    const children = await db.getAll<{ id: string }>(
-      "SELECT id FROM pages WHERE parent_id = ?",
-      [current],
-    );
-    for (const child of children) {
-      // Two devices moving folders into each other at once can leave a loop after
-      // last-write-wins; without this guard the walk would never end.
-      if (toDelete.includes(child.id)) continue;
-      toDelete.push(child.id);
-      queue.push(child.id);
-    }
-  }
-  await deletePages(toDelete);
-}
-
-/**
- * Delete exactly these pages (and folders) and their blocks, in one transaction. The sidebar
- * passes the rows it SHOWS inside the deleted one, rather than walking `parent_id` here: after a
- * concurrent-move loop the tree places loop members at the top level, and a raw walk would also
- * delete rows the confirm never pointed at. Comments are left to the server, as above.
  */
 export async function deletePages(ids: readonly string[]): Promise<void> {
   await db.writeTransaction(async (tx) => {

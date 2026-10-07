@@ -32,6 +32,7 @@ import { AiPanel } from "./ai-panel";
 import { PAGE_LINK_ATTR, PAGE_LINK_TYPE } from "./page-link";
 import { PageLinkMenu } from "./page-link-menu";
 import { schema } from "./schema";
+import { TemplateRow } from "./template-row";
 
 import {
   persistBlocks,
@@ -41,6 +42,7 @@ import {
 } from "../../lib/blocks/serialize";
 import { clearDraft, draftKey, onPageHidden, readDraft, writeDraft } from "../../lib/drafts";
 import { db } from "../../lib/powersync/client";
+import type { PageTemplate } from "../../lib/templates";
 import { useUiStore } from "../../stores/ui";
 import { useThemeStore } from "../../stores/theme";
 
@@ -87,7 +89,7 @@ function AskAiButton({ onClick }: { onClick: () => void }) {
  * content, it is a cursor. Anything else counts: text, or a block that is not a paragraph (an
  * image or a divider says something even with no words in it).
  */
-function documentHasContent(blocks: readonly { type: string; content?: unknown }[]): boolean {
+function documentHasContent(blocks: readonly { type?: string; content?: unknown }[]): boolean {
   return blocks.some((block) => {
     if (block.type !== "paragraph") return true;
     return Array.isArray(block.content) && block.content.length > 0;
@@ -272,7 +274,9 @@ export function BlockEditor({
    * make the toolbar miss its moment. The answer is recomputed in the debounced save, which
    * was already reading the document anyway.
    */
-  const hasContent = useRef(initialBlocks.length > 0);
+  // Judged the way the save judges it, so a body saved as one empty paragraph (written in, then
+  // cleared) opens as blank rather than as content until the first edit says otherwise.
+  const hasContent = useRef(documentHasContent(initialContent ?? []));
   const contentListeners = useRef(new Set<() => void>());
   const subscribeContent = useCallback((listener: () => void) => {
     contentListeners.current.add(listener);
@@ -289,10 +293,14 @@ export function BlockEditor({
 
   const handleChange = useCallback(() => {
     dirty.current = true;
+    // Only while the body is blank, when reading the document is nearly free: the first
+    // keystroke takes the template row away at once instead of a debounce later, so it can
+    // never be clicked over text it would refuse to replace.
+    if (!hasContent.current) publishContent(documentHasContent(editor.document));
     report.current?.("saving");
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(flush, SAVE_DEBOUNCE_MS);
-  }, [flush]);
+  }, [flush, editor, publishContent]);
 
   // A programmatic edit must mark the document dirty exactly as typing does, or an accepted
   // AI result would sit in the editor unsaved. Via a ref because the AI callbacks above are
@@ -462,6 +470,27 @@ export function BlockEditor({
     setAiRequest({ source: markdown, task: "summarize" });
   }, [editor]);
 
+  /** A template replaces a blank body outright, then puts the caret in its first empty block. */
+  const applyTemplate = useCallback(
+    (template: PageTemplate) => {
+      // The row hides once there is content; this is the guard that has to hold regardless.
+      if (documentHasContent(editor.document)) return;
+      const { insertedBlocks } = editor.replaceBlocks(
+        editor.document,
+        structuredClone([...template.blocks]),
+      );
+      publishContent(true);
+      handleChangeRef.current();
+      const firstEmpty = insertedBlocks.find(
+        (block) => Array.isArray(block.content) && block.content.length === 0,
+      );
+      if (firstEmpty) editor.setTextCursorPosition(firstEmpty, "start");
+      editor.focus();
+    },
+    [editor, publishContent],
+  );
+  const templatesEnabled = !compact && stableOwner.kind === "page";
+
 
   const hasAi = aiEnabled && aiTasks !== null && aiTasks.length > 0;
 
@@ -483,6 +512,9 @@ export function BlockEditor({
 
   return (
     <div ref={surfaceRef} className={compact ? "tendto-compact-editor" : "tendto-page-editor"}>
+      {templatesEnabled ? (
+        <TemplateRow subscribe={subscribeContent} read={readContent} onPick={applyTemplate} />
+      ) : null}
       {hasAi ? (
         <SummarizeRow subscribe={subscribeContent} read={readContent} onClick={summarizePage} />
       ) : null}

@@ -8,6 +8,7 @@ import { router } from "../../routes/router";
 import { useUiStore } from "../../stores/ui";
 import { SearchPalette } from "../search/search-palette";
 import { Sidebar } from "./sidebar";
+import { UndoToast } from "./undo-toast";
 
 export function AppShell() {
   const setSearchOpen = useUiStore((s) => s.setSearchOpen);
@@ -45,6 +46,7 @@ export function AppShell() {
         <Outlet />
       </main>
       <SearchPalette />
+      <UndoToast />
     </div>
   );
 }

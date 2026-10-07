@@ -17,6 +17,7 @@ import { usePageStamps } from "../../lib/page-stamps";
 import { isAutoTitle, renamePage } from "../../lib/pages";
 import { db } from "../../lib/powersync/client";
 import { usePresence } from "../../lib/presence/use-presence";
+import { useHiddenIds } from "../../stores/pending-delete";
 import { useUiStore } from "../../stores/ui";
 import { CommentSection } from "../comments/comment-section";
 import { PresenceBar } from "../presence/presence-bar";
@@ -37,6 +38,9 @@ interface Loaded {
 
 export function PageEditor({ pageId }: { pageId: string }) {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
+  // Deleted from the sidebar and waiting on Undo: Back or a link can still reach it, and
+  // typing there would be written into a page about to vanish.
+  const pendingDelete = useHiddenIds().has(pageId);
   // Bumped to re-read the page from the replica after an edit arrived from another device.
   // A targeted re-hydrate, not `location.reload()`: the rest of the app is already live.
   const [revision, setRevision] = useState(0);
@@ -67,6 +71,14 @@ export function PageEditor({ pageId }: { pageId: string }) {
       cancelled = true;
     };
   }, [pageId, revision]);
+
+  if (pendingDelete) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-sm text-subtle">Page deleted.</p>
+      </div>
+    );
+  }
 
   if (loaded === null) {
     return (
@@ -163,16 +175,22 @@ function PageEditorInner({
  * a conversation.
  */
 function PageDiscussion({ pageId, workspaceId }: { pageId: string; workspaceId: string | null }) {
-  const { data: rows, isLoading } = useQuery<{ title: string; blocks: number }>(
-    `SELECT p.title AS title,
+  const { data: rows, isLoading } = useQuery<{
+    title: string;
+    blocks: number;
+    journal_date: string | null;
+  }>(
+    `SELECT p.title AS title, p.journal_date AS journal_date,
             (SELECT count(*) FROM blocks WHERE page_id = p.id) AS blocks
        FROM pages p WHERE p.id = ?`,
     [pageId],
   );
   // An empty array is also what the hook reports while it is still loading.
   const row = isLoading ? undefined : rows[0];
-  // Written on, or named by hand. Either makes it a page somebody might discuss.
-  const started = row !== undefined && (row.blocks > 0 || !isAutoTitle(row.title));
+  // Written on, or named by hand. Either makes it a page somebody might discuss. A daily note's
+  // date title was chosen by the app, not by a person, so only writing on it counts.
+  const namedByHand = row !== undefined && !isAutoTitle(row.title) && row.journal_date === null;
+  const started = row !== undefined && (row.blocks > 0 || namedByHand);
 
   return (
     <CommentSection

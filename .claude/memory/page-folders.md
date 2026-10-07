@@ -38,3 +38,13 @@ the top level so nothing vanishes, `movePage` refuses a drop into the row's own 
 The dev API started by `scripts/e2e-stack.sh` runs WITHOUT `--reload`. After a model change it
 keeps the old column list, silently drops the new field from uploads (`_row_values` filters to
 known columns), and the server copy then syncs back down over the client's value. Restart it.
+
+## Collections got the same folders (2026-10-07, migration 0010)
+
+`collections.parent_id` + `collections.kind` ('folder' | 'collection'), same nullable/no-CHECK
+rule. Both sidebar sections now render through one component (`components/layout/sidebar-tree.tsx`
+with a `TreeSource` per section) and one move helper (`lib/tree-moves.ts`). Only folders nest in
+Collections; collections got a `position` in 0011 (see [[sidebar-tools]]). The reader that matters is the
+calendar quick-create picker: a folder there would let a task be filed into something with no
+board (`IS_COLLECTION_SQL`). `collections.name` is VARCHAR(200), so names are capped by code
+point before upload; a `slice` could split an emoji and 500 the queue.

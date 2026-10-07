@@ -82,6 +82,12 @@ ALL_RLS_TABLES: tuple[str, ...] = (
     *_USER_TABLES,
 )
 
+#: User-owned tables created AFTER migration 0008. That migration calls `rls_statements()` at
+#: upgrade time, so a later table listed in `_USER_TABLES` would make a fresh database fail
+#: there, before the table exists. Each of these is installed by its own migration through
+#: `user_table_rls()`, and `all_rls_statements()` adds them for the test schema.
+LATER_USER_TABLES: dict[str, str] = {"favorites": "user_id"}
+
 _CURRENT_USER = f"current_setting('{USER_SETTING}', true)"
 _MEMBER_WORKSPACES = "app_user_workspaces()"
 
@@ -157,6 +163,35 @@ def rls_statements() -> list[str]:
         own = f'"{column}" = {_CURRENT_USER}'
         statements.append(_policy(table, f"{table}_own", "ALL", using=own, check=own))
 
+    return statements
+
+
+def user_table_rls(table: str, column: str) -> list[str]:
+    """Install the owner-only backstop on one user-owned table: the same policy
+    `_USER_TABLES` gets in `rls_statements()`, for a table that came later."""
+    own = f'"{column}" = {_CURRENT_USER}'
+    return [
+        f'ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY',
+        f'GRANT SELECT, INSERT, UPDATE, DELETE ON "{table}" TO "{APP_ROLE}"',
+        _policy(table, f"{table}_own", "ALL", using=own, check=own),
+    ]
+
+
+def user_table_rls_drop(table: str) -> list[str]:
+    """Undo `user_table_rls`."""
+    return [
+        f'DROP POLICY IF EXISTS "{table}_own" ON "{table}"',
+        f'REVOKE ALL ON "{table}" FROM "{APP_ROLE}"',
+        f'ALTER TABLE "{table}" DISABLE ROW LEVEL SECURITY',
+    ]
+
+
+def all_rls_statements() -> list[str]:
+    """The full backstop as the latest migration leaves it: 0008's statements plus every later
+    user-owned table. For the test schema, which is built with `create_all`, not migrations."""
+    statements = rls_statements()
+    for table, column in LATER_USER_TABLES.items():
+        statements.extend(user_table_rls(table, column))
     return statements
 
 

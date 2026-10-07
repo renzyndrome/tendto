@@ -146,6 +146,11 @@ class Page(TimestampMixin, Base):
     parent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     title: Mapped[str] = mapped_column(Text, nullable=False, default="")
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # The local calendar day (YYYY-MM-DD) this page is the daily note for, or NULL for any other
+    # page (migration 0011). A wall-clock label like focus_sessions.local_date, for the same
+    # reason: the server never learns the device's timezone. TEXT, not Date, because the upload
+    # path binds client values raw.
+    journal_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
     # "page" or "folder". A folder is a pages row with no body: it reuses `parent_id` for
     # nesting, the delete cascade and the sync path instead of a second tree. Nullable with no
     # CHECK on purpose: a PUT carries every column, so a null or unknown value from some client
@@ -203,6 +208,16 @@ class Collection(TimestampMixin, Base):
     # Per-collection view config, e.g. {"columns": [{"id": "todo", "label": "To do"}, ...]} for
     # the board's status columns. Empty ⇒ the client falls back to the default three columns.
     config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+    # Folders for the Collections section, the same shape as pages (migration 0010): a folder
+    # is a collections row with kind = "folder" and no items, and `parent_id` nests a row in
+    # one. Not a FK, like pages.parent_id: the client deletes a folder's contents itself. Kind
+    # is nullable with no CHECK for the reason given on Page.kind.
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    kind: Mapped[str | None] = mapped_column(Text, nullable=True, server_default="collection")
+    # Manual order inside a folder (migration 0011). Nullable with a default so a device on an
+    # older build, which never sends it, cannot fail an upload; existing rows read 0 and keep
+    # their creation order.
+    position: Mapped[int | None] = mapped_column(Integer, nullable=True, server_default="0")
 
 
 class Item(TimestampMixin, Base):
@@ -302,3 +317,27 @@ class FocusSession(TimestampMixin, Base):
     local_date: Mapped[str] = mapped_column(String(10), nullable=False)  # YYYY-MM-DD
     # Credited focus minutes (the phase's configured length), not elapsed wall time.
     minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class Favorite(TimestampMixin, Base):
+    """A page or collection one user starred, listed in their sidebar's Favorites section.
+
+    USER-owned like FocusSession, for the same reason: which pages someone starred is personal,
+    so it rides the `user_private` bucket and never `workspace_content`, and sync.py authorizes
+    it by owner. No FK to the target: the target is a page or a collection, and a favorite left
+    pointing at a deleted one is simply not shown.
+
+    The id is random, not derived from the target, so two devices starring the same page can
+    produce two rows. The client shows a target once and unstars by deleting every row for it.
+    A derived id would collide across users, and a write to another user's row is a 403 that
+    wedges the upload queue.
+    """
+
+    __tablename__ = "favorites"
+    __table_args__ = (Index("ix_favorites_user", "user_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    # better-auth user id, String(64) with no FK, exactly like focus_sessions.user_id.
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_kind: Mapped[str] = mapped_column(String(16), nullable=False)  # page | collection
+    target_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)

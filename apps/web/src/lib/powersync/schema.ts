@@ -32,6 +32,8 @@ const pages = new Table(
     parent_id: column.text,
     title: column.text,
     position: column.integer,
+    // The local day (YYYY-MM-DD) this page is the daily note for; NULL otherwise (0011).
+    journal_date: column.text,
     // "page" or "folder" (migration 0009). Rows synced before the column existed read NULL,
     // which every reader treats as a page.
     kind: column.text,
@@ -63,6 +65,12 @@ const collections = new Table(
     name: column.text,
     default_view: column.text,
     config: column.text, // JSON string: per-collection view config (board columns)
+    // Folders in the Collections section (migration 0010): "folder" or "collection", and the
+    // folder a row sits in. Rows synced before 0010 read NULL for both: a top-level collection.
+    parent_id: column.text,
+    kind: column.text,
+    // Manual order inside a folder (0011). NULL on rows synced before it: sorts as 0.
+    position: column.integer,
     created_at: column.text,
     updated_at: column.text,
   },
@@ -115,6 +123,19 @@ const focusSessions = new Table(
   { indexes: { by_date: ["local_date"] } },
 );
 
+// Favorites are USER-private too (migration 0012): which pages someone starred never reaches a
+// teammate. A target appears once even if two devices starred it; see the API model.
+const favorites = new Table(
+  {
+    user_id: column.text,
+    target_kind: column.text, // "page" | "collection"
+    target_id: column.text,
+    created_at: column.text,
+    updated_at: column.text,
+  },
+  { indexes: { by_target: ["target_id"] } },
+);
+
 export const AppSchema = new Schema({
   workspaces,
   memberships,
@@ -126,6 +147,7 @@ export const AppSchema = new Schema({
   // Explicit key: Schema names each table from its object key, and the server table is
   // snake_case while the local const follows the file's camelCase convention.
   focus_sessions: focusSessions,
+  favorites,
 });
 
 export type Database = (typeof AppSchema)["types"];

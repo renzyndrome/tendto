@@ -8,8 +8,10 @@ import { useQuery } from "@powersync/react";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 
+import { COLLECTION_NAME_MAX } from "../../lib/collections";
 import { createItem, parseColumns, type ItemRow } from "../../lib/items/mutations";
 import { db } from "../../lib/powersync/client";
+import { useHiddenIds } from "../../stores/pending-delete";
 import { useUiStore } from "../../stores/ui";
 import { ItemDetail } from "./item-detail";
 import { Spinner } from "../ui/spinner";
@@ -33,6 +35,8 @@ interface CollectionRow {
   name: string;
   default_view: string;
   config: string;
+  /** "folder" for a folder in the Collections section; "collection" or NULL otherwise. */
+  kind: string | null;
 }
 
 function isViewKind(value: string | undefined): value is CollectionViewKind {
@@ -50,7 +54,7 @@ export function CollectionView({ collectionId, openItemId }: CollectionViewProps
   const navigate = useNavigate();
 
   const { data: collections, isLoading } = useQuery<CollectionRow>(
-    "SELECT id, name, default_view, config FROM collections WHERE id = ?",
+    "SELECT id, name, default_view, config, kind FROM collections WHERE id = ?",
     [collectionId],
   );
   const { data: items } = useQuery<ItemRow>(
@@ -59,6 +63,8 @@ export function CollectionView({ collectionId, openItemId }: CollectionViewProps
   );
 
   const collection = collections[0];
+  // Deleted from the sidebar and waiting on Undo: no new cards into it (see PageEditor).
+  const pendingDelete = useHiddenIds().has(collectionId);
   const [override, setOverride] = useState<CollectionViewKind | null>(null);
   const columns = useMemo(() => parseColumns(collection?.config), [collection?.config]);
   const openRow = openItemId ? items.find((item) => item.id === openItemId) : undefined;
@@ -76,6 +82,22 @@ export function CollectionView({ collectionId, openItemId }: CollectionViewProps
     return (
       <div className="flex h-full items-center justify-center">
         <p className="text-sm text-subtle">This collection no longer exists.</p>
+      </div>
+    );
+  }
+  if (pendingDelete) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-sm text-subtle">Collection deleted.</p>
+      </div>
+    );
+  }
+  // A folder holds no items: never offer a board to add them to. Only a typed or old URL lands
+  // here; the sidebar opens a folder in place instead of routing to it.
+  if (collection.kind === "folder") {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-sm text-subtle">Folder. Collections listed in the sidebar.</p>
       </div>
     );
   }
@@ -203,6 +225,8 @@ function CollectionName({ collectionId, name }: { collectionId: string; name: st
       }}
       placeholder="Untitled"
       aria-label="Collection name"
+      // The server column is VARCHAR(200): a longer name would fail the upload and wedge it.
+      maxLength={COLLECTION_NAME_MAX}
       className="w-full bg-transparent text-2xl font-semibold text-fg outline-none placeholder:text-subtle"
     />
   );
