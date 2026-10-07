@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 from httpx import AsyncClient
 
-from app.models.core import Block, Page
+from app.models.core import Block, Collection, Page
 from app.tests.support import TEST_USER_ID, fetch, seed_membership, seed_page
 
 # Ordered edit timestamps (client-supplied `updated_at` values).
@@ -69,6 +69,73 @@ async def test_put_folder_keeps_its_kind(client: AsyncClient) -> None:
     folder = await fetch(Page, folder_id)
     assert folder is not None
     assert folder.kind == "folder"
+
+
+async def test_put_collection_folder_and_a_collection_inside_it(client: AsyncClient) -> None:
+    ws = await seed_membership(user_id=TEST_USER_ID, role="owner")
+    folder_id, child_id = uuid4(), uuid4()
+    folder = {
+        "workspace_id": str(ws),
+        "name": "Clients",
+        "kind": "folder",
+        "default_view": "board",
+        "updated_at": T2,
+    }
+    child = {
+        "workspace_id": str(ws),
+        "name": "Acme",
+        "parent_id": str(folder_id),
+        "kind": "collection",
+        "default_view": "board",
+        "updated_at": T2,
+    }
+
+    for id_, data in ((folder_id, folder), (child_id, child)):
+        res = await client.post("/sync/upload", json=_batch("PUT", "collections", id_, data))
+        assert res.status_code == 200
+
+    stored_folder = await fetch(Collection, folder_id)
+    stored_child = await fetch(Collection, child_id)
+    assert stored_folder is not None and stored_folder.kind == "folder"
+    assert stored_child is not None and stored_child.parent_id == folder_id
+
+
+async def test_collection_position_and_page_journal_date_round_trip(client: AsyncClient) -> None:
+    """Manual order for collections and the daily-note date on pages are plain columns."""
+    ws = await seed_membership(user_id=TEST_USER_ID, role="owner")
+    collection_id, page_id = uuid4(), uuid4()
+    collection = {
+        "workspace_id": str(ws),
+        "name": "Ordered",
+        "default_view": "board",
+        "position": 3,
+        "updated_at": T2,
+    }
+    daily = {**_page_data(ws, title="October 7, 2026", updated_at=T2), "journal_date": "2026-10-07"}
+
+    for table, id_, data in (("collections", collection_id, collection), ("pages", page_id, daily)):
+        res = await client.post("/sync/upload", json=_batch("PUT", table, id_, data))
+        assert res.status_code == 200
+
+    stored_collection = await fetch(Collection, collection_id)
+    stored_page = await fetch(Page, page_id)
+    assert stored_collection is not None and stored_collection.position == 3
+    assert stored_page is not None and stored_page.journal_date == "2026-10-07"
+
+
+async def test_put_collection_without_kind_is_a_collection(client: AsyncClient) -> None:
+    """Older builds never send `kind` or `parent_id`; their collections stay top-level ones."""
+    ws = await seed_membership(user_id=TEST_USER_ID, role="owner")
+    collection_id = uuid4()
+    data = {"workspace_id": str(ws), "name": "Tasks", "default_view": "board", "updated_at": T2}
+
+    res = await client.post("/sync/upload", json=_batch("PUT", "collections", collection_id, data))
+
+    assert res.status_code == 200
+    stored = await fetch(Collection, collection_id)
+    assert stored is not None
+    assert stored.kind == "collection"
+    assert stored.parent_id is None
 
 
 async def test_put_page_without_kind_is_a_page(client: AsyncClient) -> None:
