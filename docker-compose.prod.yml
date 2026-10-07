@@ -20,6 +20,8 @@ services:
     image: postgres:16
     environment:
       POSTGRES_USER: tendto
+      # Hex only (openssl rand -hex 32). It is spliced into three connection URLs below, and
+      # a base64 "/" ends the host part of each URL early.
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set in Dokploy env}"
       POSTGRES_DB: tendto
     # PowerSync requires logical replication
@@ -59,13 +61,13 @@ services:
       db:
         condition: service_healthy
     environment:
-      AUTH_URL: "${AUTH_URL:?public https URL, e.g. https auth.tendto.example}"
+      AUTH_URL: "${AUTH_URL:?public https URL, e.g. https auth.tendto.work}"
       AUTH_PORT: "3001"
       AUTH_SECRET: "${AUTH_SECRET:?generate with openssl rand -base64 32}"
       AUTH_DATABASE_URL: postgresql://tendto:${POSTGRES_PASSWORD}@db:5432/tendto
       AUTH_ISSUER: ${AUTH_URL}
       AUTH_AUDIENCE: ${AUTH_AUDIENCE:-tendto}
-      WEB_URL: "${WEB_URL:?public https URL, e.g. https tendto.example}"
+      WEB_URL: "${WEB_URL:?public https URL, e.g. https tendto.work}"
       # Extra allowed browser origins (the desktop shell). Blank = the tauri:// defaults.
       WEB_ORIGINS: ${WEB_ORIGINS:-}
     networks:
@@ -98,8 +100,8 @@ services:
       context: ./apps/web
       args:
         # Baked into the static bundle at build time — public URLs only.
-        VITE_API_URL: "${API_URL:?public https URL, e.g. https api.tendto.example}"
-        VITE_POWERSYNC_URL: "${POWERSYNC_URL:?public https URL, e.g. https sync.tendto.example}"
+        VITE_API_URL: "${API_URL:?public https URL, e.g. https api.tendto.work}"
+        VITE_POWERSYNC_URL: "${POWERSYNC_URL:?public https URL, e.g. https sync.tendto.work}"
         VITE_AUTH_URL: ${AUTH_URL}
     networks:
       - dokploy-network

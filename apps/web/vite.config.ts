@@ -61,7 +61,7 @@ export default defineConfig(({ mode, command }) => {
     clearScreen: false,
     resolve: {
       alias: {
-        // The ONE platform seam (src/lib/powersync/platform-contract.ts). Exactly one
+        // The PowerSync platform seam (src/lib/powersync/platform-contract.ts). Exactly one
         // implementation is compiled into a build: the browser bundle never carries Tauri code,
         // and the desktop bundle never carries the wasm SQLite worker.
         // tsconfig.json maps the same specifier to the web file so `tsc` has something to check.
@@ -70,6 +70,17 @@ export default defineConfig(({ mode, command }) => {
             mode === "desktop"
               ? "./src/lib/powersync/platform.desktop.ts"
               : "./src/lib/powersync/platform.web.ts",
+            import.meta.url,
+          ),
+        ),
+        // The second seam (src/lib/ai/engine-contract.ts), and the same rule applies: the
+        // browser bundle never carries the Tauri AI code, and only the desktop build can spawn
+        // the user's own `claude`/`codex` binary.
+        "@tendto-ai-engine": fileURLToPath(
+          new URL(
+            mode === "desktop"
+              ? "./src/lib/ai/engine.desktop.ts"
+              : "./src/lib/ai/engine.web.ts",
             import.meta.url,
           ),
         ),

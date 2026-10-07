@@ -9,11 +9,15 @@
 //!   - **A session that survives updates**, stored by Rust rather than in webview storage
 //!     (`session.rs`), which is also what lets the sync connector authenticate on its own.
 //!   - **Tray + native notifications**, so reminders arrive while the window is closed.
+//!   - **The user's own AI subscription** (`ai.rs`): a browser cannot spawn the `claude` or
+//!     `codex` binary the user already installed, so AI on the desktop costs the operator
+//!     nothing and the text never leaves the machine.
 //!
 //! The PowerSync Tauri SDK is alpha and its JS↔Rust protocol is explicitly unstable, so both
 //! crates are pinned exactly and must move together with the JS packages in apps/web — see
 //! .claude/memory/powersync-version-alignment.md.
 
+mod ai;
 mod commands;
 mod connector;
 mod session;
@@ -23,6 +27,7 @@ use std::sync::Arc;
 
 use tauri::Manager;
 
+use crate::ai::AiState;
 use crate::commands::SyncState;
 use crate::session::SessionStore;
 
@@ -38,6 +43,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_powersync::init())
         .manage(SyncState::default())
+        .manage(AiState::default())
         .setup(|app| {
             // Both live under the app's own data directory, so a second account on the same
             // machine never shares them.
@@ -53,6 +59,9 @@ pub fn run() {
             commands::session_set,
             commands::session_clear,
             commands::session_get,
+            ai::ai_detect,
+            ai::ai_run,
+            ai::ai_cancel,
         ])
         .run(tauri::generate_context!())
         .expect("error while running TendTo");

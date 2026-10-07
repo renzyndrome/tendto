@@ -5,24 +5,53 @@ Postgres (internal only), PowerSync, the better-auth service, FastAPI, and the s
 bundle behind nginx. Dokploy's Traefik terminates HTTPS — required in production, since the
 web app's OPFS storage (PowerSync's SQLite) only works in a secure context.
 
+Production runs at **tendto.work**. The layout is one subdomain per public service:
+
+| URL | Service | Port |
+| --- | --- | --- |
+| `https://tendto.work` | `web` | 80 |
+| `https://api.tendto.work` | `api` | 8000 |
+| `https://auth.tendto.work` | `auth` | 3001 |
+| `https://sync.tendto.work` | `powersync` | 8080 |
+
+All four share the registrable domain `tendto.work`, which is what lets the auth service's
+SameSite=Lax session cookie reach it from the web app. Moving any one of them to an unrelated
+domain would break sign-in in the browser.
+
 ## One-time setup
 
+0. **DNS.** At the registrar for `tendto.work`, create four `A` records pointing at the
+   droplet's public IPv4 address (and matching `AAAA` records if the droplet has IPv6 enabled):
+
+   | Type | Name | Value |
+   | --- | --- | --- |
+   | `A` | `@` | droplet IPv4 |
+   | `A` | `api` | droplet IPv4 |
+   | `A` | `auth` | droplet IPv4 |
+   | `A` | `sync` | droplet IPv4 |
+
+   Check with `dig +short api.tendto.work` before deploying. Traefik requests the Let's Encrypt
+   certificates over HTTP on port 80, so the droplet's firewall must allow 80 and 443, and the
+   records must resolve first, or issuance fails and gets rate-limited.
 1. **Push the repo** to GitHub/GitLab (Dokploy pulls from git).
 2. In Dokploy: **Create Service → Compose**, point it at the repo, branch `main`,
    compose path `docker-compose.prod.yml`.
-3. **Environment tab** — set the variables from [.env.prod.example](../.env.prod.example):
-   `POSTGRES_PASSWORD`, `AUTH_SECRET` (both `openssl rand -base64 32`), and the four public
-   URLs (`WEB_URL`, `API_URL`, `AUTH_URL`, `POWERSYNC_URL`). Leave `WEB_ORIGINS` blank unless you
+3. **Environment tab**: paste [.env.prod.example](../.env.prod.example), which already carries
+   the four tendto.work URLs, then fill in the two secrets:
+   `POSTGRES_PASSWORD` with `openssl rand -hex 32` and `AUTH_SECRET` with
+   `openssl rand -base64 32`. **The Postgres password must be hex.** It is spliced into three
+   connection URLs, and a base64 `/` ends the host part of each one early, which surfaces as
+   a connection failure rather than as a bad password. Leave `WEB_ORIGINS` blank unless you
    need an extra browser origin: blank already allows `WEB_URL` plus the desktop shell's webview,
    and unlike the URLs it is read at runtime, so changing it is a **restart, not a rebuild**.
 4. **Domains tab** — attach one domain per public service (Traefik issues certificates):
 
-   | Domain (example)       | Service     | Port |
-   | ---------------------- | ----------- | ---- |
-   | `tendto.example`       | `web`       | 80   |
-   | `api.tendto.example`   | `api`       | 8000 |
-   | `auth.tendto.example`  | `auth`      | 3001 |
-   | `sync.tendto.example`  | `powersync` | 8080 |
+   | Domain              | Service     | Port |
+   | ------------------- | ----------- | ---- |
+   | `tendto.work`       | `web`       | 80   |
+   | `api.tendto.work`   | `api`       | 8000 |
+   | `auth.tendto.work`  | `auth`      | 3001 |
+   | `sync.tendto.work`  | `powersync` | 8080 |
 
    These must match the env vars — `VITE_*` URLs are baked into the web bundle at build time,
    and `AUTH_URL` becomes the JWT issuer that FastAPI and PowerSync validate.
@@ -53,6 +82,34 @@ web app's OPFS storage (PowerSync's SQLite) only works in a secure context.
    ```
 
    One active slot means replication is live.
+
+## Where AI runs in production
+
+The server ships with **no AI engine**: `AI_API_KEY` is empty and `AI_CLI` is not passed
+through at all, because a CLI on a shared host would be one person's subscription serving
+everyone. What that means for each client:
+
+| Client | AI |
+| --- | --- |
+| Desktop app | Runs on each user's own `claude` or `codex` CLI (see `docs/desktop.md`) |
+| Browser and phone | No AI buttons. The recap still shows its facts |
+
+Setting `AI_API_KEY` later turns AI on for the browser and phone too. It is read at runtime, so
+that is a restart of the `api` service, not a rebuild.
+
+## Desktop releases
+
+The installers compile the backend URLs in. The repository's Actions **variables** (not secrets)
+hold them:
+
+| Variable | Value |
+| --- | --- |
+| `VITE_API_URL` | `https://api.tendto.work` |
+| `VITE_AUTH_URL` | `https://auth.tendto.work` |
+| `VITE_POWERSYNC_URL` | `https://sync.tendto.work` |
+
+Check them with `gh variable list`. A release tagged before the backend is live still builds,
+but the app it produces cannot sign anyone in until the backend answers at those addresses.
 
 ## How the pieces authenticate in prod
 

@@ -14,13 +14,14 @@
     "noEmit": true,
     "types": ["vite/client", "vite-plugin-pwa/client"],
 
-    /* The platform seam. Vite swaps this for platform.desktop.ts in `--mode desktop`; tsc always
-       checks against the web implementation, and checks the desktop one on its own because it
-       also lives under src/. Both are typed against PowerSyncPlatform, which is what keeps them
-       from drifting. */
+    /* The two build seams. Vite swaps each for its .desktop.ts sibling in `--mode desktop`;
+       tsc always checks against the web implementation, and checks the desktop one on its own
+       because it also lives under src/. Both pairs are typed against a shared contract
+       (PowerSyncPlatform, AiEngine), which is what keeps them from drifting. */
     "baseUrl": ".",
     "paths": {
-      "@powersync-platform": ["./src/lib/powersync/platform.web.ts"]
+      "@powersync-platform": ["./src/lib/powersync/platform.web.ts"],
+      "@tendto-ai-engine": ["./src/lib/ai/engine.web.ts"]
     }
   },
   "include": ["src"]

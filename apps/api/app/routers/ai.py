@@ -27,10 +27,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.compose import TASKS, Task, clean, truncate, wrap_user_text
+from app.ai.compose import (
+    INJECTION_RULE,
+    TASKS,
+    USER_TEXT_MARKER,
+    Task,
+    clean,
+    truncate,
+    wrap_user_text,
+)
 from app.ai.limits import gate, take
 from app.ai.provider import ChatProvider, StreamingChatProvider, get_provider
-from app.ai.summary import gather_activity, summarize
+from app.ai.summary import DAILY_SUMMARY_SYSTEM, gather_activity, render_activity, summarize
 from app.auth import CurrentUser, get_current_user
 from app.db import get_session
 from app.schemas.ai import (
@@ -65,12 +73,17 @@ async def daily_summary(
         start = end = day
 
     activity = await gather_activity(session, user.id, start, end, today=today)
-    summary = await summarize(activity, provider)
+    # `prose=False` is a caller with its own engine (the desktop shell, running the user's own
+    # CLI). Skipping `summarize` here is the whole point: no engine call, nothing spent, and the
+    # digest below is everything that caller needs to write the recap itself.
+    prose = body.prose if body else True
+    summary = await summarize(activity, provider) if prose else ""
     return DailySummaryResponse(
         start=start,
         end=end,
         summary=summary,
-        engine=getattr(provider, "name", "custom"),
+        digest=render_activity(activity),
+        engine=getattr(provider, "name", "custom") if prose else "none",
         activity=ActivityOut(
             focus_minutes=activity.focus_minutes,
             focus_sessions=activity.focus_sessions,
@@ -97,16 +110,37 @@ async def status(
     return EngineStatus(
         engine=engine,
         available=engine != "offline",
-        tasks=[
-            TaskOut(
-                key=task.key,
-                label=task.label,
-                whole_document=task.whole_document,
-                scope=task.scope,
-            )
-            for task in TASKS.values()
-        ],
+        tasks=[*(_task_out(task) for task in TASKS.values()), _RECAP_TASK],
+        user_text_marker=USER_TEXT_MARKER,
     )
+
+
+def _task_out(task: Task) -> TaskOut:
+    return TaskOut(
+        key=task.key,
+        label=task.label,
+        whole_document=task.whole_document,
+        scope=task.scope,
+        system=task.system,
+    )
+
+
+#: The daily recap's prompt, carried on the task list so a local engine can write the prose
+#: itself (see DailySummaryRequest.prose). Not a member of TASKS, because it is not a thing a
+#: person picks from a menu and it must not become callable through /ai/compose. Its "recap"
+#: scope is matched by neither the editor nor the command palette, so it stays out of both.
+#
+#: The injection rule is appended HERE and not to `summarize()`, because only the local path
+#: wraps the digest in the marker. The digest is built by the server, but from titles anyone in
+#: a shared workspace can write, and the engine reading it is an agentic CLI on someone's own
+#: machine. That is the case the rule exists for.
+_RECAP_TASK = TaskOut(
+    key="recap",
+    label="Daily recap",
+    whole_document=True,
+    scope="recap",
+    system=f"{DAILY_SUMMARY_SYSTEM}\n\n{INJECTION_RULE}",
+)
 
 
 class _Prepared(NamedTuple):

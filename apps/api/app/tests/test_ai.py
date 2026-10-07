@@ -311,3 +311,62 @@ async def test_daily_summary_endpoint_uses_injected_provider(client: AsyncClient
 
     assert res.status_code == 200
     assert res.json()["summary"] == "STUBBED SUMMARY"
+
+
+async def test_daily_summary_carries_the_digest_it_fed_the_model(client: AsyncClient) -> None:
+    """The prose and the facts behind it arrive together.
+
+    The digest is what a caller with its OWN engine writes the recap from, so it has to be the
+    same text the server would have used — not a second rendering that could drift.
+    """
+    ws = await seed_membership(user_id=TEST_USER_ID)
+    await _seed_day_activity(ws)
+
+    res = await client.post("/ai/daily-summary", json={"date": DAY.isoformat()})
+
+    body = res.json()
+    assert "Ship the API" in body["digest"]
+    # The offline fallback presents the digest back, so the prose contains it verbatim here.
+    assert body["digest"] in body["summary"]
+
+
+async def test_prose_false_gathers_the_activity_and_spends_no_inference(
+    client: AsyncClient,
+) -> None:
+    """The recap split: the server still does the part that needs a membership check.
+
+    A desktop caller runs the user's own CLI over `digest`, so asking the server for prose as
+    well would spend the operator's engine for nothing.
+    """
+    ws = await seed_membership(user_id=TEST_USER_ID)
+    await _seed_day_activity(ws)
+
+    class ExplodingProvider:
+        name = "api"
+
+        async def complete(self, system: str, user: str) -> str:
+            raise AssertionError("no engine call should happen when prose is off")
+
+    app.dependency_overrides[get_provider] = lambda: ExplodingProvider()
+    try:
+        res = await client.post("/ai/daily-summary", json={"date": DAY.isoformat(), "prose": False})
+    finally:
+        app.dependency_overrides.pop(get_provider, None)
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["summary"] == ""
+    assert body["engine"] == "none"
+    # Everything the caller needs to write the recap itself.
+    assert "Ship the API" in body["digest"]
+    assert "Ship the API" in body["activity"]["items_completed"]
+
+
+async def test_prose_defaults_to_on(client: AsyncClient) -> None:
+    """Omitting the field must not quietly turn the recap into a digest for every old client."""
+    await seed_membership(user_id=TEST_USER_ID)
+
+    res = await client.post("/ai/daily-summary", json={"date": DAY.isoformat()})
+
+    assert res.json()["summary"].strip()
+    assert res.json()["engine"] == "offline"

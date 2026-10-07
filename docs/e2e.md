@@ -47,7 +47,7 @@ FastAPI `:18000` · Vite `:15173` (started by Playwright). See `scripts/e2e-stac
 | 3 | `calendar.spec.ts` | due-dated item appears on the calendar and links to its collection |
 | 3 | `search.spec.ts` | ⌘/Ctrl-K finds a block by content and navigates to its page |
 | 3 | `export.spec.ts` | Export downloads JSON + Markdown; JSON contains the created content |
-| 3 | `ai-summary.spec.ts` | authed `POST /ai/daily-summary` returns a non-empty summary (offline fallback) |
+| 3 | `ai-summary.spec.ts` | authed `POST /ai/daily-summary` returns a non-empty summary (offline fallback) · `prose: false` returns the digest and runs no engine (never skipped: it spends nothing) |
 | 4 | `page-links.spec.ts` | `[[` links a page mid-sentence · the chip follows its target and tracks a rename · a link to a deleted page goes inert · a lone `[` is left alone |
 | 4 | `backlinks.spec.ts` | a page lists who links to it and forgets a link that is deleted · a page that writes the title without linking it shows as a mention |
 | 4 | `related.spec.ts` | a page suggests another that shares distinctive vocabulary, and leaves an unrelated one out |
@@ -56,8 +56,18 @@ FastAPI `:18000` · Vite `:15173` (started by Playwright). See `scripts/e2e-stac
 | 4 | `page-stamps.spec.ts` | a page shows when it was created, and stays quiet about "edited" in the same sitting |
 | 4 | `empty-page.spec.ts` | a blank page offers no comment box and no Summarize · both arrive with the first word · a thread never disappears |
 | 4 | `personalization.spec.ts` | font and size preview on the open page · Cancel and Escape put back exactly what was there · Save survives a reload |
+| 5 | `ai-engine.spec.ts` | the browser build offers no engine to choose · every task on `/ai/status` ships its system prompt and the injection marker · the recap prompt stays out of the rewrite menu |
 | 4 | `desktop-auth.spec.ts` | the browser app never receives the session token · the desktop shell does, and it authenticates the API |
 | 4 | `e2e-pwa/pwa.spec.ts` | service worker precaches the shell **and the SQLite wasm** · manifest is installable (192 + 512 + maskable icons, all served) · reload with the network off still renders |
+
+### What this suite cannot reach
+The suite drives the **web** build, so anything behind a Tauri command is out of reach here. Two
+things are covered elsewhere rather than pretended at:
+
+- **AI on the user's own CLI** (`apps/desktop/src-tauri/src/ai.rs`): `cargo test` covers the
+  delta parser, the prompt assembly and binary detection against a planted fake binary; the rest
+  is the manual probe in `docs/desktop.md`. `ai-engine.spec.ts` covers the browser half.
+- **The native replica and tray**: see `docs/desktop.md`.
 
 ## How the harness works
 - `e2e/global.setup.ts` — a health gate: fails fast with a clear message if the stack is down.

@@ -1,31 +1,23 @@
 /**
- * Interactive AI — summarize a page, rewrite a selection (doc 06, AI-2).
+ * Interactive AI — summarize a page, rewrite a selection, ask your notes (doc 06, AI-2).
  *
- * Unlike everything else the editor does, this genuinely needs the network and a configured
- * engine: there is no offline summary the way there is an offline recap (the recap always has
- * a real structured digest; a summary of nothing is nothing). So the UI asks first, and hides
- * the AI entry points entirely rather than offering buttons that cannot work.
+ * This is the face every component uses. What actually runs the inference is chosen by the
+ * build: the server in the browser, the user's own CLI on the desktop. See engine-contract.ts
+ * for why that seam exists and what each side does.
+ *
+ * Unlike everything else the editor does, this genuinely needs an engine: there is no offline
+ * summary the way there is an offline recap (the recap always has a real structured digest; a
+ * summary of nothing is nothing). So the UI asks first, and hides the AI entry points entirely
+ * rather than offering buttons that cannot work.
  */
-import { apiFetch } from "../api/client";
+import { useEffect, useState } from "react";
 
-export interface AiTask {
-  key: string;
-  label: string;
-  /** True for tasks that act on the whole page rather than a selection (today: summarize). */
-  whole_document: boolean;
-  /**
-   * Which surface offers this task. "editor" tasks rewrite text the user selected; "search"
-   * tasks answer a question about the workspace and belong in the command palette. The editor
-   * filters on this, so a task added server-side cannot appear in the rewrite menu by default.
-   */
-  scope: "editor" | "search";
-}
+import { engine } from "@tendto-ai-engine";
 
-export interface EngineStatus {
-  engine: string;
-  available: boolean;
-  tasks: AiTask[];
-}
+import type { AiEngineInfo } from "./engine-contract";
+
+export type { AiTask } from "./server-status";
+export type { AiEngineInfo, LocalEngine } from "./engine-contract";
 
 /** How an engine name reads to a person. Unknown names show as-is rather than as "custom". */
 const ENGINE_LABELS: Record<string, string> = {
@@ -39,44 +31,56 @@ export const engineLabel = (engine: string): string => ENGINE_LABELS[engine] ?? 
 
 export interface ComposeResult {
   text: string;
-  engine: string;
   truncated: boolean;
 }
 
-/** Whether an engine is configured is operator config — it cannot change under a running tab,
- *  so it is fetched once per session and shared, like the member roster. */
-let pending: Promise<EngineStatus> | null = null;
-
-const UNAVAILABLE: EngineStatus = { engine: "offline", available: false, tasks: [] };
-
-export function loadEngineStatus(): Promise<EngineStatus> {
-  if (!pending) {
-    pending = apiFetch("/ai/status")
-      .then((res) => res.json() as Promise<EngineStatus>)
-      // Offline or erroring: behave exactly as if no engine were configured. The features
-      // disappear; nothing breaks. Crucially the FAILURE is not cached — a blip on first paint
-      // (or a token that was not minted yet) would otherwise hide AI until the tab is reloaded.
-      .catch(() => {
-        pending = null;
-        return UNAVAILABLE;
-      });
-  }
-  return pending;
+/** What is running AI here. Memoised inside the engine, so this is cheap to call. */
+export function loadEngineStatus(): Promise<AiEngineInfo> {
+  return engine.describe();
 }
 
-
+/** Fired when the device's engine choice changes, so open surfaces re-read it. */
+const CHANGED = "tendto:ai-engine-changed";
 
 /**
- * Stream a task, calling `onDelta` with each piece as it arrives.
+ * Drop what every surface believes about the engine and make them ask again.
  *
- * `fetch` + a stream reader rather than `EventSource`, which can carry neither an
- * Authorization header nor a request body. Resolves with the finished text.
- *
- * Once the response has started the server can no longer answer with a status code, so a
- * failure arrives as a final `error` event — which this turns back into a thrown Error, so
- * callers handle both kinds of failure the same way.
+ * Called after the AI settings row is saved. Without it, an editor that is already open would
+ * keep offering the old engine until the window was reopened.
  */
-export async function streamCompose(
+export function refreshEngine(): void {
+  engine.forget();
+  window.dispatchEvent(new Event(CHANGED));
+}
+
+/** The active engine, or null while it is still being worked out. */
+export function useEngineStatus(enabled = true): AiEngineInfo | null {
+  const [status, setStatus] = useState<AiEngineInfo | null>(null);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    const load = () => {
+      void loadEngineStatus().then((next) => {
+        if (!cancelled) setStatus(next);
+      });
+    };
+    load();
+    window.addEventListener(CHANGED, load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(CHANGED, load);
+    };
+  }, [enabled]);
+
+  return status;
+}
+
+/**
+ * Stream a task, calling `onDelta` with each piece as it arrives. Resolves with the finished
+ * text, and rejects on any failure so callers handle one kind of error rather than two.
+ */
+export function streamCompose(
   task: string,
   text: string,
   onDelta: (piece: string) => void,
@@ -84,52 +88,5 @@ export async function streamCompose(
   /** Only for a search-scoped task: `text` carries the sources, this carries what to ask. */
   options?: { question?: string },
 ): Promise<ComposeResult> {
-  const res = await apiFetch("/ai/compose/stream", {
-    method: "POST",
-    signal,
-    body: JSON.stringify({ task, text, question: options?.question }),
-  });
-  const body = res.body;
-  if (!body) throw new Error("The AI engine returned nothing.");
-
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let result: ComposeResult | null = null;
-
-  const handle = (payload: string) => {
-    let event: { delta?: string; done?: boolean; text?: string; truncated?: boolean; error?: string };
-    try {
-      event = JSON.parse(payload);
-    } catch {
-      return; // a frame we cannot read is not worth losing the response over
-    }
-    if (event.error) throw new Error(event.error);
-    if (typeof event.delta === "string") onDelta(event.delta);
-    if (event.done && typeof event.text === "string") {
-      result = { text: event.text, engine: "stream", truncated: event.truncated ?? false };
-    }
-  };
-
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      // Frames are separated by a blank line; the last piece may be a partial frame, so it
-      // stays in the buffer until the rest of it arrives.
-      const frames = buffer.split("\n\n");
-      buffer = frames.pop() ?? "";
-      for (const frame of frames) {
-        for (const line of frame.split("\n")) {
-          if (line.startsWith("data:")) handle(line.slice("data:".length).trim());
-        }
-      }
-    }
-  } finally {
-    await reader.cancel().catch(() => undefined);
-  }
-
-  if (!result) throw new Error("The AI engine returned nothing.");
-  return result;
+  return engine.run({ task, text, question: options?.question }, onDelta, signal);
 }

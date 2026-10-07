@@ -15,10 +15,10 @@
  * Settings are per DEVICE, matching the notifications toggle (see lib/notifications.ts), which
  * is deliberately per-device too: the thing being configured is what this machine does at 9pm.
  */
-import { apiFetch } from "./api/client";
 import { toDateKey } from "./calendar";
 import { notificationsEnabled, notify } from "./notifications";
 import type { RecapResponse } from "./recap";
+import { fetchRecap } from "./recap-fetch";
 
 const SETTINGS_KEY = "tendto:recap-schedule";
 const DELIVERED_KEY = "tendto:recap-delivered";
@@ -99,8 +99,8 @@ function markDelivered(dateKey: string): void {
 /**
  * Fetch and show a recap right now, ignoring the clock and the "already delivered" marker.
  *
- * The point is proof: someone who has just configured an AI engine wants to know it works
- * without waiting until nine o'clock to find out it doesn't.
+ * The point is proof: someone who has just switched the evening recap on wants to know it
+ * arrives, without waiting until nine o'clock to find out it doesn't.
  */
 export async function sendRecapNow(onOpen: () => void): Promise<void> {
   const recap = await fetchToday();
@@ -136,13 +136,16 @@ export function summarise(recap: RecapResponse): string {
   return parts.length > 0 ? parts.join(" · ") : "A calm day — nothing tracked.";
 }
 
+/**
+ * Today's recap, facts only.
+ *
+ * `prose: false` because the notification body is built from the STRUCTURED digest (see
+ * `summarise`) and never showed the prose. Asking for it would spend an engine call every
+ * evening, on every device, to produce text nothing reads.
+ */
 async function fetchToday(): Promise<RecapResponse> {
   const today = toDateKey(new Date());
-  const res = await apiFetch("/ai/daily-summary", {
-    method: "POST",
-    body: JSON.stringify({ date: today, today }),
-  });
-  return (await res.json()) as RecapResponse;
+  return fetchRecap({ date: today, today }, { prose: false });
 }
 
 let inFlight: Promise<boolean> | null = null;
@@ -175,9 +178,9 @@ async function runCheck(onOpen: () => void, now: Date): Promise<boolean> {
   if (now.getTime() < dueAt.getTime()) return false;
 
   /*
-   * Mark BEFORE fetching, not after. This costs an AI call, and a failure that left the day
-   * unmarked would retry every minute until midnight — a bad evening for the operator's
-   * subscription. One attempt per day is the right trade; the recap page is one click away.
+   * Mark BEFORE fetching, not after. A failure that left the day unmarked would retry every
+   * minute until midnight, and hammering the API all evening is the wrong answer to a bad
+   * request. One attempt per day is the right trade; the recap page is one click away.
    */
   markDelivered(today);
 

@@ -16,10 +16,12 @@ import { bootstrapWorkspaces } from "../../lib/bootstrap";
 import { createCollection, deleteCollectionCascade } from "../../lib/collections";
 import { exportWorkspace } from "../../lib/export";
 import { createPage, deletePageCascade } from "../../lib/pages";
+import { isDesktop } from "../../lib/platform";
 import { disconnectAndClearDb } from "../../lib/powersync/client";
 import { useVisibleWorkspaces } from "../../lib/use-workspaces";
 import { createWorkspace } from "../../lib/workspaces";
 import { useUiStore } from "../../stores/ui";
+import { AiSettings } from "./ai-settings";
 import { NotificationToggle } from "./notification-toggle";
 import { Personalization } from "./personalization";
 import { WorkspaceSettings } from "./workspace-settings";
@@ -49,6 +51,7 @@ export function Sidebar() {
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [personalizationOpen, setPersonalizationOpen] = useState(false);
+  const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
 
   // Never count or offer a workspace the server doesn't acknowledge — the shared hook is where
   // that rule lives, so the calendar and the switcher can't drift apart (see lib/bootstrap.ts).
@@ -178,6 +181,11 @@ export function Sidebar() {
       {personalizationOpen ? (
         <Personalization onClose={() => setPersonalizationOpen(false)} />
       ) : null}
+      {/* `isDesktop` first, so the browser build cannot reach this even if the state flag
+          were somehow set. */}
+      {isDesktop && aiSettingsOpen ? (
+        <AiSettings onClose={() => setAiSettingsOpen(false)} />
+      ) : null}
 
       {settingsOpen && workspaceId ? (
         <WorkspaceSettings
@@ -249,6 +257,13 @@ export function Sidebar() {
         {/* Theme used to cycle from here. It lives inside Personalization now, beside the two
             other things that decide how the app looks — one row instead of three. */}
         <SidebarButton label="Personalization" onClick={() => setPersonalizationOpen(true)} />
+        {/* Desktop only, and not a section of Personalization: which machine runs the AI is
+            a capability, not a look. A browser has nothing to spawn and nothing to choose.
+            The dialog itself carries no Tauri code — the engine seam keeps that out of the
+            browser bundle (see lib/ai/engine-contract.ts). */}
+        {isDesktop ? (
+          <SidebarButton label="AI engine" onClick={() => setAiSettingsOpen(true)} />
+        ) : null}
         <NotificationToggle />
         <button
           type="button"

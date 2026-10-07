@@ -10,10 +10,30 @@ import { expectNewPageOpened } from "./helpers/pages";
  * that retrieval happens on the device and sends the right notes, that the answer and its
  * sources reach the screen, and that nothing is offered when no engine exists.
  */
-const ASK_TASK = { key: "ask", label: "Ask my notes", whole_document: false, scope: "search" };
+// `system` mirrors the real /ai/status, which ships each task's prompt so a local engine can
+// send it. The web path never uses it; a stub that omitted it would drift from the contract.
+const ASK_TASK = {
+  key: "ask",
+  label: "Ask my notes",
+  whole_document: false,
+  scope: "search",
+  system: "ASK PROMPT",
+};
 const EDITOR_TASKS = [
-  { key: "summarize", label: "Summarize", whole_document: true, scope: "editor" },
-  { key: "shorten", label: "Make shorter", whole_document: false, scope: "editor" },
+  {
+    key: "summarize",
+    label: "Summarize",
+    whole_document: true,
+    scope: "editor",
+    system: "SUMMARIZE PROMPT",
+  },
+  {
+    key: "shorten",
+    label: "Make shorter",
+    whole_document: false,
+    scope: "editor",
+    system: "SHORTEN PROMPT",
+  },
 ];
 
 interface Captured {
@@ -33,6 +53,7 @@ async function stubAsk(page: Page, options: { available: boolean; reply?: string
         engine: options.available ? "stub" : "offline",
         available: options.available,
         tasks: options.available ? [...EDITOR_TASKS, ASK_TASK] : [],
+        user_text_marker: "<<<USER TEXT>>>",
       }),
     }),
   );

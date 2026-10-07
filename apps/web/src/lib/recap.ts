@@ -94,6 +94,12 @@ export interface RecapResponse {
   start: string | null;
   end: string;
   summary: string;
-  engine: string; // "offline" | "claude-cli" | "codex-cli" | "api" | ...
+  /**
+   * The rendered activity digest — the exact text the server would feed a model. A device with
+   * its own AI engine writes the prose from this, so the facts are gathered once, on the server,
+   * where the membership check lives.
+   */
+  digest: string;
+  engine: string; // "offline" | "none" | "claude-cli" | "codex-cli" | "api" | ...
   activity: RecapActivity;
 }

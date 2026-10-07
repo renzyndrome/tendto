@@ -14,7 +14,7 @@ import {
   type SearchHit,
   type SearchResults,
 } from "../../lib/search";
-import { loadEngineStatus } from "../../lib/ai/compose";
+import { useEngineStatus } from "../../lib/ai/compose";
 import { useUiStore } from "../../stores/ui";
 import { AskNotes } from "./ask-notes";
 
@@ -28,32 +28,21 @@ export function SearchPalette() {
   const [results, setResults] = useState<SearchResults>(EMPTY_RESULTS);
   /** The question being answered, or null while the palette is just searching. */
   const [asking, setAsking] = useState<string | null>(null);
-  const [engine, setEngine] = useState<{
-    available: boolean;
-    name: string;
-  } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   /*
-   * Whether an engine exists is operator config, cached for the session. No engine means the
-   * Ask row never appears at all, rather than appearing and failing — the same rule the editor
-   * follows for its AI buttons.
+   * Whether an engine exists is a device setting on the desktop and operator config in the
+   * browser, cached either way. No engine means the Ask row never appears at all, rather than
+   * appearing and failing — the same rule the editor follows for its AI buttons.
    */
-  useEffect(() => {
-    if (!open || engine !== null) return;
-    let cancelled = false;
-    void loadEngineStatus().then((status) => {
-      if (cancelled) return;
-      setEngine({
-        available:
-          status.available && status.tasks.some((task) => task.key === "ask"),
-        name: status.engine,
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, engine]);
+  const status = useEngineStatus(open);
+  const engine =
+    status === null
+      ? null
+      : {
+          available: status.available && status.tasks.some((task) => task.key === "ask"),
+          name: status.engine,
+        };
 
   // Reset + focus whenever the palette opens.
   useEffect(() => {

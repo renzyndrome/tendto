@@ -37,4 +37,32 @@ test.describe("ai daily summary", () => {
     expect(body.summary.trim().length).toBeGreaterThan(0);
     expect(Array.isArray(body.activity.pages_updated)).toBe(true);
   });
+
+  test("prose off returns the facts and spends nothing", async ({ authedPage: page }) => {
+    /*
+     * No skip, and that is the point: `prose: false` runs no engine at all, so this proves the
+     * real endpoint on the real stack even on a machine with AI_CLI set — which is every
+     * machine where the test above has to skip.
+     *
+     * It is the half a desktop asks for when it is going to write the recap itself with the
+     * user's own CLI. The facts still come from Postgres, behind the membership check.
+     */
+    await page.getByRole("button", { name: "New page" }).click();
+    await page.waitForTimeout(1500); // let it upload to Postgres
+
+    const res = await apiPost(page.request, "/ai/daily-summary", { prose: false });
+    expect(res.ok(), `daily-summary failed: ${res.status()} ${await res.text()}`).toBeTruthy();
+
+    const body = (await res.json()) as {
+      engine: string;
+      summary: string;
+      digest: string;
+      activity: { pages_updated: string[] };
+    };
+    expect(body.engine).toBe("none");
+    expect(body.summary).toBe("");
+    // The digest is what a local engine writes the recap from, so it has to be real.
+    expect(body.digest.trim().length).toBeGreaterThan(0);
+    expect(Array.isArray(body.activity.pages_updated)).toBe(true);
+  });
 });

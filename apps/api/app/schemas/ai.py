@@ -21,6 +21,11 @@ class DailySummaryRequest(BaseModel):
     start: datetime.date | None = None
     end: datetime.date | None = None
     today: datetime.date | None = None
+    #: Whether the SERVER should write the prose. False when the caller has a local AI engine
+    #: (the desktop shell running the user's own CLI) and will write it itself: gathering the
+    #: activity needs a membership check and stays here, but the inference does not have to.
+    #: The digest comes back either way, so nothing about the response shape changes.
+    prose: bool = True
 
 
 class DueItemOut(BaseModel):
@@ -45,6 +50,10 @@ class DailySummaryResponse(BaseModel):
     start: datetime.date | None  # None = all-time
     end: datetime.date
     summary: str
+    #: The rendered activity digest — exactly the text the server feeds the model. Returned so a
+    #: caller with its own engine can write the prose without re-deriving the facts from its
+    #: replica. Empty prose plus this is a complete, honest recap on its own.
+    digest: str
     # Which engine wrote `summary` ("claude-cli", "api", "offline"). The UI hides the prose
     # when it is "offline" — the fallback text IS the digest, and the digest renders structured.
     engine: str
@@ -79,8 +88,15 @@ class TaskOut(BaseModel):
     key: str
     label: str
     whole_document: bool
-    #: "editor" or "search" — which surface should offer this task. See app.ai.compose.Task.
+    #: "editor", "search", or "recap" — which surface should offer this task. The editor and the
+    #: command palette each filter on their own value, so "recap" appears in neither menu.
+    #: See app.ai.compose.Task.
     scope: str
+    #: The system prompt. Shipped to the client because a LOCAL engine has to send it itself,
+    #: and the prompts must stay owned by the server: they carry the injection rule, which
+    #: matters more when the engine is an agentic CLI on someone's own machine, not less.
+    #: A second copy in the client is a copy that can be forgotten.
+    system: str
 
 
 class EngineStatus(BaseModel):
@@ -94,3 +110,7 @@ class EngineStatus(BaseModel):
     engine: str
     available: bool
     tasks: list[TaskOut]
+    #: app.ai.compose.USER_TEXT_MARKER. A local engine assembles its own prompt, and the marker
+    #: is half of the injection defence, so it travels with the prompts rather than being
+    #: spelled out a second time in the client.
+    user_text_marker: str

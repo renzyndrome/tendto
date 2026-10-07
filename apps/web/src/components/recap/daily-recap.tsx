@@ -2,11 +2,14 @@
  * Daily recap — the surface for TendTo's one ambient AI feature (doc 06 AI-1), over a chosen
  * period: a day, a week, a month, or everything so far.
  *
- * The summary is generated SERVER-side over Postgres (the source of truth), so unlike every
+ * The activity is gathered SERVER-side over Postgres (the source of truth), so unlike every
  * content view this one needs the API. The response carries the STRUCTURED digest alongside
  * the prose, so the facts render as designed elements — overdue in the danger colour, upcoming
- * in the warn colour — rather than as a text blob. When the server runs the offline engine the
- * prose would just repeat the digest, so it is hidden and the structure speaks for itself.
+ * in the warn colour — rather than as a text blob. When no engine wrote the prose it would just
+ * repeat the digest, so it is hidden and the structure speaks for itself.
+ *
+ * WHO writes the prose depends on the device: the server, or this machine's own CLI on the
+ * desktop. Either way the facts come from the same place. See lib/recap-fetch.ts.
  *
  * A day is a ROUTE (`/recap/$date?period=…`), like the calendar's — linkable, Back steps out,
  * reload stays put. Responses are cached per period+anchor for the session so browsing history
@@ -16,7 +19,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
-import { apiFetch } from "../../lib/api/client";
+import { fetchRecap, LOCAL_FAILED } from "../../lib/recap-fetch";
 import { toDateKey } from "../../lib/calendar";
 import { formatMinutes } from "../../lib/focus/stats";
 import { RecapScheduleControl } from "./recap-schedule-control";
@@ -66,12 +69,8 @@ export function DailyRecap({ anchorKey, period }: { anchorKey: string; period: P
 
     if (!cached) setRecap({ status: "loading", data: null });
     const { start, end } = periodRange(period, anchorKey);
-    apiFetch("/ai/daily-summary", {
-      method: "POST",
-      body: JSON.stringify({ start, end, today: toDateKey(new Date()) }),
-    })
-      .then(async (res) => {
-        const data = (await res.json()) as RecapResponse;
+    fetchRecap({ start, end, today: toDateKey(new Date()) })
+      .then((data) => {
         cache.set(key, data);
         if (!cancelled) setRecap({ status: "ready", data });
       })
@@ -179,7 +178,12 @@ function RecapBody({ data }: { data: RecapResponse }) {
     activity.items_completed.length > 0 ||
     activity.items_created.length > 0 ||
     activity.pages_updated.length > 0;
+  // Hidden when there is nothing to show, not when a particular engine is named. The prose is
+  // empty for three different reasons now — no server engine, AI switched off on this device,
+  // and a local engine that failed — and an empty bordered box is wrong for all three.
+  const prose = data.summary.trim();
   const offline = data.engine === "offline";
+  const localFailed = data.engine === LOCAL_FAILED;
 
   if (!needsAttention && !hasActivity) {
     return (
@@ -229,17 +233,17 @@ function RecapBody({ data }: { data: RecapResponse }) {
         </div>
       ) : null}
 
-      {/* The AI's narrative, when an engine is configured. The offline engine's "prose" is the
+      {/* The AI's narrative, when something wrote one. The offline engine's "prose" is the
           digest verbatim, which the structured sections below already show — so offline gets a
           hint instead of a duplicate. */}
-      {offline ? null : (
+      {prose && !offline ? (
         <article
           data-testid="recap-prose"
           className="whitespace-pre-wrap rounded-xl border border-line bg-surface px-5 py-4 text-sm leading-relaxed text-fg"
         >
-          {data.summary}
+          {prose}
         </article>
-      )}
+      ) : null}
 
       {/* The raw activity, always — the facts stay visible whether or not anything narrates them. */}
       <NameList label="Completed" names={activity.items_completed} />
@@ -250,6 +254,14 @@ function RecapBody({ data }: { data: RecapResponse }) {
         <p className="pt-1 text-xs text-subtle">
           For a written recap, point the server at an AI engine — AI_CLI=claude or an
           AI_API_KEY in .env.
+        </p>
+      ) : null}
+
+      {/* A local CLI that failed is a different problem with a different fix, and pointing at
+          the server's .env would send someone somewhere with nothing to change. */}
+      {localFailed ? (
+        <p data-testid="recap-local-failed" className="pt-1 text-xs text-subtle">
+          Local engine failed. Check the AI engine setting.
         </p>
       ) : null}
     </div>
