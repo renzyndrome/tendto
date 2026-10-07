@@ -197,7 +197,7 @@ function RecapBody({ data }: { data: RecapResponse }) {
     <div data-testid="recap-body" className="space-y-4">
       {needsAttention ? (
         <section className="rounded-xl border border-line bg-surface px-5 py-4">
-          <h2 className="mb-2.5 text-[10px] font-medium uppercase tracking-wide text-subtle">
+          <h2 className="mb-2.5 text-[0.625rem] font-medium uppercase tracking-wide text-subtle">
             Needs attention
           </h2>
           <ul className="space-y-1.5">
@@ -304,7 +304,7 @@ function NameList({ label, names }: { label: string; names: string[] }) {
   if (names.length === 0) return null;
   return (
     <section className="rounded-xl border border-line bg-surface px-5 py-3.5">
-      <h2 className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-subtle">
+      <h2 className="mb-1.5 text-[0.625rem] font-medium uppercase tracking-wide text-subtle">
         {label}
       </h2>
       <p className="text-sm leading-relaxed text-fg">{names.join(" · ")}</p>

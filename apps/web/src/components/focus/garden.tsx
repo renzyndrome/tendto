@@ -39,7 +39,7 @@ export function Garden({ week, todayKey }: GardenProps) {
             />
             <span
               className={
-                "mt-1 text-[10px] " +
+                "mt-1 text-[0.625rem] " +
                 (day.dateKey === todayKey ? "font-medium text-fg" : "text-subtle")
               }
             >

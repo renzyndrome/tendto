@@ -12,6 +12,14 @@
   :root {
     color-scheme: light;
 
+    /*
+     * Interface scale: the whole app is drawn at this size, the way a browser zoom would draw
+     * it. 1.2 matches the 120% zoom the app was found comfortable at, so 100% browser zoom no
+     * longer reads as zoomed out. Everything sized in rem follows the root font size below;
+     * the few sizes in px (the editor's text, the page gutter) multiply by this directly.
+     */
+    --tendto-ui-scale: 1.2;
+
     --c-app: 255 255 255; /* page background */
     --c-surface: 250 250 250; /* sidebar, board columns */
     --c-elevated: 255 255 255; /* cards, modals — sits above surface */
@@ -48,6 +56,11 @@
   body {
     @apply bg-app text-fg;
   }
+
+  /* A percentage, not px: a reader who raised the browser's default font size keeps that. */
+  html {
+    font-size: calc(100% * var(--tendto-ui-scale));
+  }
 }
 
 /*
@@ -63,7 +76,8 @@
  */
 .bn-editor.bn-default-styles {
   font-family: var(--tendto-font, Inter, ui-sans-serif, system-ui, sans-serif);
-  font-size: var(--tendto-font-size, 16px);
+  /* The chosen size is the size at 100%; the interface scale applies on top, like the rem UI. */
+  font-size: calc(var(--tendto-font-size, 16px) * var(--tendto-ui-scale, 1));
 }
 
 /*
@@ -79,6 +93,29 @@
 .bn-root.bn-container[data-color-scheme] {
   --bn-colors-editor-background: transparent;
   --bn-colors-editor-text: rgb(var(--c-fg));
+}
+
+/*
+ * Page column: the title, the stamps and the body share one left edge.
+ *
+ * BlockNote insets its text 54px on each side to make room for the drag handle and add button,
+ * which left the body visibly indented from the title above it (and short of the Summarize
+ * button on the right). The column now carries that same gutter as its own padding, and the
+ * editor is pulled back out over it: its text lands on the column edge while the handle keeps
+ * its 54px, still inside the column, so nothing overflows however narrow the main area gets.
+ *
+ * The pull is scoped by the variable, not the class alone: a page editor rendered anywhere
+ * without a page column around it falls back to 0 and keeps BlockNote's own inset.
+ */
+.tendto-page-column {
+  /* BlockNote's own 54px, grown with the interface scale; the editor's inset is set to match. */
+  --tendto-page-gutter: calc(54px * var(--tendto-ui-scale, 1));
+  padding-inline: var(--tendto-page-gutter);
+}
+
+.tendto-page-editor .bn-editor {
+  margin-inline: calc(-1 * var(--tendto-page-gutter, 0px));
+  padding-inline: var(--tendto-page-gutter, 54px);
 }
 
 /*
@@ -124,7 +161,7 @@
    * the loudest thing on screen. Headings scale off this via their `em`-based --level, so the
    * hierarchy is preserved at the smaller base.
    */
-  font-size: calc(var(--tendto-font-size, 16px) * 0.875);
+  font-size: calc(var(--tendto-font-size, 16px) * 0.875 * var(--tendto-ui-scale, 1));
   line-height: 1.65;
 }
 

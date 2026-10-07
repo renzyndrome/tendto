@@ -185,14 +185,14 @@ function BoardCard({
         {props.due || props.assignee ? (
           <span className="mt-1.5 flex flex-wrap items-center gap-1">
             {props.due ? (
-              <span className="rounded bg-hover/50 px-1.5 py-0.5 text-[11px] text-muted">
+              <span className="rounded bg-hover/50 px-1.5 py-0.5 text-[0.6875rem] text-muted">
                 Due {formatDueLabel(props.due)}
               </span>
             ) : null}
             {typeof props.assignee === "string" && props.assignee ? (
               <span
                 title={props.assignee}
-                className="max-w-full truncate rounded bg-hover/50 px-1.5 py-0.5 text-[11px] text-muted"
+                className="max-w-full truncate rounded bg-hover/50 px-1.5 py-0.5 text-[0.6875rem] text-muted"
               >
                 {props.assignee}
               </span>

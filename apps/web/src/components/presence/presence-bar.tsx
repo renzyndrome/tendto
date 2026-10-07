@@ -44,7 +44,7 @@ export function PresenceBar({ others }: { others: Viewer[] }) {
           key={viewer.user_id}
           data-testid="presence-viewer"
           // Overlapped like a stack of faces; the ring keeps them legible where they meet.
-          className={`flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[10px] font-medium text-on-accent ring-2 ring-elevated ${
+          className={`flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[0.625rem] font-medium text-on-accent ring-2 ring-elevated ${
             index === 0 ? "" : "-ml-2"
           }`}
         >
@@ -52,7 +52,7 @@ export function PresenceBar({ others }: { others: Viewer[] }) {
         </span>
       ))}
       {overflow > 0 ? (
-        <span className="-ml-2 flex h-6 w-6 items-center justify-center rounded-full bg-hover text-[10px] font-medium text-muted ring-2 ring-elevated">
+        <span className="-ml-2 flex h-6 w-6 items-center justify-center rounded-full bg-hover text-[0.625rem] font-medium text-muted ring-2 ring-elevated">
           +{overflow}
         </span>
       ) : null}

@@ -63,9 +63,13 @@ test.describe("page connections", () => {
     await backlink.click();
     await expect(page.getByTestId("page-title")).toHaveValue(source, { timeout: 20_000 });
 
-    // Remove the link; the index must forget it.
+    // Remove the link; the index must forget it. Click the line that holds it, not the editor's
+    // middle: with an empty block below, the middle is the boundary between the two lines. Then
+    // let the editor read the new caret: keys sent within milliseconds of the click land on the
+    // selection it had before, in the empty block, where Backspace changes nothing.
     const editor = editorOf(page);
-    await editor.click();
+    await editor.getByText("budget notes live in").click();
+    await page.waitForTimeout(300);
     await page.keyboard.press("End");
     for (let i = 0; i < 3; i += 1) await page.keyboard.press("Backspace");
     await expect(page.getByTestId("page-link")).toHaveCount(0, { timeout: 10_000 });

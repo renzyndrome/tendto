@@ -156,7 +156,7 @@ export function SearchPalette() {
                   onClick={() => setAsking(trimmed)}
                   className="flex w-full items-center gap-2 border-b border-line px-4 py-2 text-left text-sm text-muted hover:bg-hover"
                 >
-                  <span className="shrink-0 rounded bg-hover px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted">
+                  <span className="shrink-0 rounded bg-hover px-1.5 py-0.5 text-[0.625rem] font-medium uppercase text-muted">
                     Ask
                   </span>
                   <span className="truncate">
@@ -254,7 +254,7 @@ function ResultRow({
         onClick={onSelect}
         className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-muted hover:bg-hover"
       >
-        <span className="shrink-0 rounded bg-hover px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted">
+        <span className="shrink-0 rounded bg-hover px-1.5 py-0.5 text-[0.625rem] font-medium uppercase text-muted">
           {badge}
         </span>
         <span className="truncate">{label || "Untitled"}</span>

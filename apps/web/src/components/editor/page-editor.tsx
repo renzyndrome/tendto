@@ -111,7 +111,10 @@ function PageEditorInner({
   const external = useExternalEdit(pageOwner(pageId));
 
   return (
-    <div className="mx-auto min-h-full max-w-3xl px-6 py-10">
+    // tendto-page-column: horizontal padding lives in index.css, sized to the editor's gutter.
+    // Anchored to the sidebar rather than centered: on a wide screen a centered column left a
+    // wide empty band between the sidebar and the page. Spare width now collects on the right.
+    <div className="tendto-page-column ml-10 min-h-full max-w-3xl py-10">
       {/* Above the title and right-aligned, so it reads as "about this page" and takes no
           vertical space when nobody else is here (the usual case: it renders nothing). */}
       <div className="flex justify-end">

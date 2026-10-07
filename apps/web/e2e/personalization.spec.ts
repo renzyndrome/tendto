@@ -16,6 +16,22 @@ test.describe("personalization", () => {
         return { family: style.fontFamily, size: style.fontSize };
       });
 
+  /**
+   * The editor draws the chosen size times the interface scale (index.css), so "16" renders at
+   * 16px × scale. The scale is read from the page, so this follows any change to it.
+   */
+  const expectSize = async (
+    page: import("@playwright/test").Page,
+    actual: string,
+    chosen: number,
+  ) => {
+    const scale = await page.evaluate(() =>
+      Number(getComputedStyle(document.documentElement).getPropertyValue("--tendto-ui-scale")),
+    );
+    expect(scale).toBeGreaterThan(0);
+    expect(parseFloat(actual)).toBeCloseTo(chosen * scale, 1);
+  };
+
   test("previews on the open page, and only keeps it if you save", async ({
     authedPage: page,
   }) => {
@@ -26,7 +42,7 @@ test.describe("personalization", () => {
     await editor.pressSequentially("how this reads matters");
 
     const before = await editorFont(page);
-    expect(before.size).toBe("16px");
+    await expectSize(page, before.size, 16);
 
     await page.getByRole("button", { name: "Personalization" }).click();
     await expect(page.getByTestId("personalization")).toBeVisible();
@@ -35,7 +51,7 @@ test.describe("personalization", () => {
     await page.getByTestId("pref-font-serif").click();
     await page.getByTestId("pref-size-20").click();
     const previewed = await editorFont(page);
-    expect(previewed.size).toBe("20px");
+    await expectSize(page, previewed.size, 20);
     expect(previewed.family).not.toBe(before.family);
 
     // Cancel puts back exactly what was there.
@@ -56,7 +72,7 @@ test.describe("personalization", () => {
       { timeout: 30_000 },
     );
     const after = await editorFont(page);
-    expect(after.size).toBe("20px");
+    await expectSize(page, after.size, 20);
     expect(after.family).toBe(previewed.family);
   });
 
@@ -71,7 +87,7 @@ test.describe("personalization", () => {
 
     await page.getByRole("button", { name: "Personalization" }).click();
     await page.getByTestId("pref-size-14").click();
-    expect((await editorFont(page)).size).toBe("14px");
+    await expectSize(page, (await editorFont(page)).size, 14);
 
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("personalization")).toHaveCount(0);

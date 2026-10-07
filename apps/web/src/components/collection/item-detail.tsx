@@ -253,7 +253,7 @@ export function ItemDetail({ row, columns, workspaceId, onClose, onDeleted }: It
               <span
                 data-testid="save-state"
                 aria-live="polite"
-                className="text-[11px] text-subtle transition-opacity"
+                className="text-[0.6875rem] text-subtle transition-opacity"
                 style={{ opacity: saveState === "idle" ? 0 : 1 }}
               >
                 {saveState === "saving" ? "Saving…" : "Saved"}
