@@ -58,6 +58,48 @@ async def test_put_inserts_page(client: AsyncClient) -> None:
     assert page.workspace_id == ws
 
 
+async def test_put_folder_keeps_its_kind(client: AsyncClient) -> None:
+    ws = await seed_membership(user_id=TEST_USER_ID, role="owner")
+    folder_id = uuid4()
+    data = {**_page_data(ws, title="Work", updated_at=T2), "kind": "folder"}
+
+    res = await client.post("/sync/upload", json=_batch("PUT", "pages", folder_id, data))
+
+    assert res.status_code == 200
+    folder = await fetch(Page, folder_id)
+    assert folder is not None
+    assert folder.kind == "folder"
+
+
+async def test_put_page_without_kind_is_a_page(client: AsyncClient) -> None:
+    """A device on an older build never sends `kind`; its pages must still read as pages."""
+    ws = await seed_membership(user_id=TEST_USER_ID, role="owner")
+    page_id = uuid4()
+
+    res = await client.post(
+        "/sync/upload",
+        json=_batch("PUT", "pages", page_id, _page_data(ws, title="Old", updated_at=T2)),
+    )
+
+    assert res.status_code == 200
+    page = await fetch(Page, page_id)
+    assert page is not None
+    assert page.kind == "page"
+
+
+async def test_put_page_with_null_kind_is_accepted(client: AsyncClient) -> None:
+    """A PUT carries every column, nulls included. A null `kind` must not fail the batch: the
+    upload queue is ordered, so a 500 here would wedge that device's writes for good."""
+    ws = await seed_membership(user_id=TEST_USER_ID, role="owner")
+    page_id = uuid4()
+    data = {**_page_data(ws, title="Null kind", updated_at=T2), "kind": None}
+
+    res = await client.post("/sync/upload", json=_batch("PUT", "pages", page_id, data))
+
+    assert res.status_code == 200
+    assert await fetch(Page, page_id) is not None
+
+
 async def test_put_block_parses_jsonb_content(client: AsyncClient) -> None:
     ws = await seed_membership(user_id=TEST_USER_ID)
     page_id = await seed_page(workspace_id=ws)

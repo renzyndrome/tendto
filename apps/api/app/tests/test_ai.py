@@ -91,6 +91,32 @@ async def test_build_daily_summary_reflects_activity() -> None:
     assert "Weekly Plan" in summary  # page updated today
 
 
+async def test_a_folder_is_not_reported_as_an_edited_page() -> None:
+    """A folder is a `pages` row, but renaming one is filing, not writing."""
+    ws = await seed_membership(user_id=TEST_USER_ID)
+    await _seed_day_activity(ws)
+    at = datetime(DAY.year, DAY.month, DAY.day, 12, 0, tzinfo=UTC)
+    async with TestSession() as session:
+        session.add(
+            Page(
+                id=uuid4(),
+                workspace_id=ws,
+                title="Archive Folder",
+                kind="folder",
+                position=1,
+                created_at=at,
+                updated_at=at,
+            )
+        )
+        await session.commit()
+
+    async with TestSession() as session:
+        summary = await build_daily_summary(session, TEST_USER_ID, DAY)
+
+    assert "Weekly Plan" in summary
+    assert "Archive Folder" not in summary
+
+
 async def _seed_due_item(workspace_id: UUID, title: str, due: str, status: str = "todo") -> None:
     """One item with a `due` property, in its own collection (items need the FK).
 

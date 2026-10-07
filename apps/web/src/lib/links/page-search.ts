@@ -5,6 +5,7 @@
  * network. Ranked by FTS5 when the index is up (the same index search uses), with the LIKE
  * scan as the fallback, exactly as `../search.ts` does it.
  */
+import { IS_PAGE_SQL, NOT_A_FOLDER_ID_SQL } from "../pages";
 import { db } from "../powersync/client";
 import { isFtsReady, toPrefixQuery } from "../powersync/fts";
 
@@ -35,7 +36,8 @@ export async function findPagesForLink(
 
   if (!trimmed) {
     return db.getAll<PageChoice>(
-      "SELECT id, title FROM pages WHERE workspace_id = ? AND id != ? " +
+      // A link opens a page; a folder has nothing to open, so it is never offered.
+      `SELECT id, title FROM pages WHERE workspace_id = ? AND id != ? AND ${IS_PAGE_SQL} ` +
         "ORDER BY updated_at DESC LIMIT ?",
       [workspaceId, exclude, LIMIT],
     );
@@ -46,8 +48,8 @@ export async function findPagesForLink(
     if (match) {
       try {
         return await db.getAll<PageChoice>(
-          "SELECT id, title FROM fts_pages WHERE workspace_id = ? AND id != ? " +
-            "AND fts_pages MATCH ? ORDER BY rank LIMIT ?",
+          `SELECT id, title FROM fts_pages WHERE workspace_id = ? AND id != ? ` +
+            `AND ${NOT_A_FOLDER_ID_SQL} AND fts_pages MATCH ? ORDER BY rank LIMIT ?`,
           [workspaceId, exclude, match, LIMIT],
         );
       } catch (err) {
@@ -58,7 +60,7 @@ export async function findPagesForLink(
   }
 
   return db.getAll<PageChoice>(
-    "SELECT id, title FROM pages WHERE workspace_id = ? AND id != ? " +
+    `SELECT id, title FROM pages WHERE workspace_id = ? AND id != ? AND ${IS_PAGE_SQL} ` +
       "AND title LIKE ? ESCAPE '\\' ORDER BY updated_at DESC LIMIT ?",
     [workspaceId, exclude, `%${escapeLike(trimmed)}%`, LIMIT],
   );

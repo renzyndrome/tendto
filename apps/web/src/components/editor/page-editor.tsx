@@ -31,6 +31,8 @@ interface Loaded {
   blocks: BlockRow[];
   title: string;
   workspaceId: string | null;
+  /** A folder has no body. Only a typed or old URL lands here; the app never links one. */
+  isFolder: boolean;
 }
 
 export function PageEditor({ pageId }: { pageId: string }) {
@@ -45,8 +47,8 @@ export function PageEditor({ pageId }: { pageId: string }) {
     setLoaded(null); // spinner while switching pages
     void Promise.all([
       loadBlocks(pageOwner(pageId)),
-      db.getAll<{ title: string; workspace_id: string }>(
-        "SELECT title, workspace_id FROM pages WHERE id = ?",
+      db.getAll<{ title: string; workspace_id: string; kind: string | null }>(
+        "SELECT title, workspace_id, kind FROM pages WHERE id = ?",
         [pageId],
       ),
     ]).then(([blocks, rows]) => {
@@ -57,6 +59,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
           // THIS page's workspace, not whichever one the sidebar is showing — a comment must be
           // pinned where its page lives or the people reading that page won't receive it.
           workspaceId: rows[0]?.workspace_id ?? null,
+          isFolder: rows[0]?.kind === "folder",
         });
       }
     });
@@ -69,6 +72,15 @@ export function PageEditor({ pageId }: { pageId: string }) {
     return (
       <div className="flex h-full items-center justify-center">
         <Spinner label="Loading page…" />
+      </div>
+    );
+  }
+
+  // Never mount the editor on a folder: typing would give a body to something that has none.
+  if (loaded.isFolder) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-sm text-subtle">Folder. Pages listed in the sidebar.</p>
       </div>
     );
   }

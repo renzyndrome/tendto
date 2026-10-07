@@ -32,6 +32,9 @@ const pages = new Table(
     parent_id: column.text,
     title: column.text,
     position: column.integer,
+    // "page" or "folder" (migration 0009). Rows synced before the column existed read NULL,
+    // which every reader treats as a page.
+    kind: column.text,
     created_at: column.text,
     updated_at: column.text,
   },

@@ -10,6 +10,7 @@
  * `relatedPages` is exported through an interface so a future embedding implementation can
  * replace this one without the panel knowing.
  */
+import { NOT_A_FOLDER_ID_SQL } from "../pages";
 import { db } from "../powersync/client";
 import { isFtsReady, toOrQuery } from "../powersync/fts";
 import { extractTerms } from "./terms";
@@ -85,7 +86,8 @@ const ftsRelatedPages: RelatedPagesProvider = {
         db.getAll<{ id: string; score: number }>(
           `SELECT id, rank AS score
              FROM fts_pages
-            WHERE workspace_id = ? AND id != ? AND fts_pages MATCH ?
+            WHERE workspace_id = ? AND id != ? AND ${NOT_A_FOLDER_ID_SQL}
+              AND fts_pages MATCH ?
             ORDER BY rank LIMIT ?`,
           [workspaceId, pageId, match, MAX_SCORED_TITLES],
         ),
