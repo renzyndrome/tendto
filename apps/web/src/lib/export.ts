@@ -31,6 +31,10 @@ interface CollectionRow {
   workspace_id: string;
   name: string;
   default_view: string;
+  /** The folder this row sits in (migration 0010); NULL at the top level. */
+  parent_id: string | null;
+  /** "folder" for a folder; "collection" or NULL for a collection. */
+  kind: string | null;
   created_at: string;
   updated_at: string;
 }

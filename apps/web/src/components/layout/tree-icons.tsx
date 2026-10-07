@@ -60,3 +60,31 @@ export function NewFolderIcon({ className }: IconProps) {
     </Svg>
   );
 }
+
+/** A small board (three columns) with a plus: "new collection". */
+export function NewCollectionIcon({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path d="M8 13H3c-.6 0-1-.4-1-1V4c0-.6.4-1 1-1h10c.6 0 1 .4 1 1v4" />
+      <path d="M6 3v10M10 3v5" />
+      <path d="M12 10.5v4M10 12.5h4" />
+    </Svg>
+  );
+}
+
+/** A five-point star, outlined, or filled for a favorite. */
+export function StarIcon({ filled, className }: IconProps & { filled: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth={1.3}
+      strokeLinejoin="round"
+      aria-hidden
+      className={className ?? "h-4 w-4"}
+    >
+      <path d="M8 2.2l1.75 3.55 3.9.57-2.82 2.75.66 3.89L8 11.13l-3.49 1.83.66-3.89L2.35 6.32l3.9-.57z" />
+    </svg>
+  );
+}

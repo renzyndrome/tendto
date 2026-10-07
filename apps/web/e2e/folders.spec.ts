@@ -8,6 +8,11 @@ import { expect, test } from "./fixtures";
  * folder never shows up where a page is expected (search, links).
  */
 
+/** The Pages section. Collections has its own "New folder", so header buttons are scoped. */
+function pagesSection(page: Page): Locator {
+  return page.getByRole("region", { name: "Pages" });
+}
+
 /** The tree node (row plus its children) whose own row is named `name`. */
 function node(page: Page, name: string): Locator {
   return page
@@ -26,7 +31,7 @@ function row(page: Page, name: string): Locator {
 }
 
 async function newFolder(page: Page, name: string): Promise<void> {
-  await page.getByRole("button", { name: "New folder" }).click();
+  await pagesSection(page).getByRole("button", { name: "New folder" }).click();
   const input = page.getByRole("textbox", { name: "Folder name" });
   await expect(input).toBeFocused();
   await input.fill(name);
@@ -162,7 +167,7 @@ test.describe("folders", () => {
 
     const folders = page.locator('[data-testid="tree-row"][data-kind="folder"]');
     const count = await folders.count();
-    await page.getByRole("button", { name: "New folder" }).click();
+    await pagesSection(page).getByRole("button", { name: "New folder" }).click();
     await page.getByRole("textbox", { name: "Folder name" }).fill("Never made");
     await page.getByRole("textbox", { name: "Folder name" }).press("Escape");
     await expect(page.getByRole("textbox", { name: "Folder name" })).toHaveCount(0);

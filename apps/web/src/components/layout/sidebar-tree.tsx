@@ -1,124 +1,143 @@
 /**
- * The sidebar's Pages section: folders and pages in one tree, worked like an editor's file
- * explorer.
+ * A sidebar section as a folder tree, worked like an editor's file explorer. Pages and
+ * Collections both render through this; each passes a `TreeSource` that says what its rows are
+ * and how to change them (page-tree.tsx, collection-tree.tsx).
  *
- * - Click a row to highlight it. The open page is highlighted on its own.
- * - "New page" / "New folder" in the header create inside the highlighted folder, beside a
- *   highlighted page, or at the top level when nothing is highlighted (click empty space).
- * - A new folder is named in place; double-click a folder to rename it.
- * - Drag a row onto a folder to move it in, or onto the header or empty space to move it out.
+ * - Click a row to highlight it. The open page or collection is highlighted on its own.
+ * - "New folder" / "New …" in the header create inside the highlighted folder, beside a
+ *   highlighted item, or at the top level when nothing is highlighted (click empty space).
+ * - A new folder is named in place; double-click (or F2) renames a folder.
+ * - Drag a row onto a folder to move it in, onto a row's top or bottom edge to reorder, or onto
+ *   the header or empty space to move it out.
+ * - Right-click (or the ContextMenu key) for Open, Favorites, Rename, Move to… and Delete.
+ * - Arrow keys walk the tree; Right and Left open and close; Delete deletes, with Undo.
  *
- * Everything reads from the local replica and writes through lib/pages.ts, so a change shows at
- * once and syncs like any other edit. Expand/collapse and the highlight are view state only.
+ * Everything reads from the local replica and writes through the source's lib functions, so a
+ * change shows at once and syncs like any other edit. Expand/collapse and the highlight are
+ * view state; which folders are closed is remembered per device.
  */
-import { useQuery } from "@powersync/react";
-import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 
 import {
   ancestorIds,
-  buildPageTree,
+  buildTree,
   createTarget,
   descendantIds,
-  dropTarget,
+  dropPlace,
   isFolder,
-  type PageTree as Tree,
+  reorderedSiblings,
+  shownParent,
+  visibleOrder,
   type TreeRow,
-} from "../../lib/page-tree";
-import {
-  AUTO_TITLE,
-  createFolder,
-  createPage,
-  deletePages,
-  movePage,
-  renamePage,
-} from "../../lib/pages";
-import { ChevronIcon, FolderIcon, NewFolderIcon, NewPageIcon } from "./tree-icons";
+} from "../../lib/tree";
+import { useHiddenIds, usePendingDelete } from "../../stores/pending-delete";
+import { NewFolderIcon } from "./tree-icons";
+import { TreeMenu } from "./tree-menu";
+import { DraftFolderRow, MAIN_ATTR, TreeNode } from "./tree-row";
+import type { DropHint, TreeContext, TreeSource } from "./tree-types";
 
-/** One nesting level, in rem so it grows with the interface scale. */
-const INDENT_REM = 0.75;
+export type { TreeSource } from "./tree-types";
 
-/**
- * The drag payload's type. Deliberately not text/plain: the editor and the title field accept
- * dropped text, so a row let go over the page would paste its id into the document.
- */
-const DRAG_TYPE = "application/x-tendto-page";
-
-/** `/p/<id>` → id. The tree highlights the open page without being told. */
-function openPageIdFrom(pathname: string): string | null {
-  const match = /^\/p\/([^/]+)/.exec(pathname);
+/** `/<prefix>/<id>…` → id, for `openId`. Tolerates a malformed `%` in a typed URL. */
+export function idFromPath(pathname: string, prefix: string): string | null {
+  const match = new RegExp(`^/${prefix}/([^/]+)`).exec(pathname);
   if (!match) return null;
   try {
     return decodeURIComponent(match[1]);
   } catch {
-    return null; // a malformed `%` in a typed URL must not take the sidebar down
+    return null; // a malformed `%` must not take the sidebar down
   }
 }
 
-/** Drag state. `over` is where a drop would land: a folder id, or null for the top level. */
+/** Where a section remembers its closed folders on this device. */
+const collapsedKey = (testId: string) => `tendto:tree-collapsed:${testId}`;
+
+function readCollapsed(testId: string): ReadonlySet<string> {
+  try {
+    const raw = localStorage.getItem(collapsedKey(testId));
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : []);
+  } catch {
+    return new Set(); // storage blocked or the value is nonsense: everything starts open
+  }
+}
+
+function writeCollapsed(testId: string, ids: ReadonlySet<string>): void {
+  try {
+    localStorage.setItem(collapsedKey(testId), JSON.stringify([...ids]));
+  } catch {
+    // Storage unavailable: the folders still open and close, they just are not remembered.
+  }
+}
+
+/** Drag state: what is being dragged, and where it would land right now. */
 interface DragState {
   id: string;
-  over: string | null | undefined;
+  over: DropHint | undefined;
 }
 
-/** Everything a row needs from the tree, passed down as one object. */
-interface TreeContext {
-  tree: Tree;
-  selectedId: string | null;
-  collapsed: ReadonlySet<string>;
-  renamingId: string | null;
-  /** The parent a new folder is being named in; undefined when none is. */
-  draftParent: string | null | undefined;
-  dropOver: string | null | undefined;
-  draggingId: string | null;
-  onToggle: (id: string) => void;
-  onSelect: (row: TreeRow) => void;
-  onStartRename: (id: string) => void;
-  onRename: (id: string, name: string) => void;
-  onCancelRename: () => void;
-  onCommitDraft: (name: string) => void;
-  onCancelDraft: () => void;
-  onAddPage: (parentId: string) => void;
-  onDelete: (row: TreeRow) => void;
-  onDragStart: (event: DragEvent, id: string) => void;
-  onDragOver: (event: DragEvent, target: string | null) => void;
-  onDrop: (event: DragEvent, target: string | null) => void;
-  onDragEnd: () => void;
+interface MenuState {
+  rowId: string;
+  x: number;
+  y: number;
 }
 
-export function PageTree({ workspaceId }: { workspaceId: string | null }) {
-  const navigate = useNavigate();
-  const pathname = useRouterState({
-    select: (state) => state.location.pathname,
-  });
-  const openPageId = openPageIdFrom(pathname);
-
-  const { data: rows } = useQuery<TreeRow>(
-    "SELECT id, title, parent_id, kind, position FROM pages WHERE workspace_id = ?",
-    [workspaceId ?? ""],
+export function SidebarTree({ source }: { source: TreeSource }) {
+  const { openId } = source;
+  const hidden = useHiddenIds();
+  const schedule = usePendingDelete((state) => state.schedule);
+  // Rows waiting on Undo are gone from view; the tree is built without them.
+  const rows = useMemo(
+    () => (hidden.size === 0 ? source.rows : source.rows.filter((row) => !hidden.has(row.id))),
+    [source.rows, hidden],
   );
-  const tree = useMemo(() => buildPageTree(rows), [rows]);
+  const tree = useMemo(() => buildTree(rows), [rows]);
+  const bodyRef = useRef<HTMLDivElement>(null);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() =>
+    readCollapsed(source.testId),
+  );
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draftParent, setDraftParent] = useState<string | null | undefined>(undefined);
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [menu, setMenu] = useState<MenuState | null>(null);
 
-  // The open page is the highlighted row, like the active file in an editor, and its folders
-  // open so the highlight can be seen. Only when the open page CHANGES: running again on every
-  // tree change would undo a collapse made while the page stays open.
+  useEffect(() => writeCollapsed(source.testId, collapsed), [source.testId, collapsed]);
+
+  // The open row is the highlighted one, like the active file in an editor, and its folders
+  // open so the highlight can be seen. Only when the open row CHANGES: running again on every
+  // tree change would undo a collapse made while it stays open. Leaving this section (a page
+  // opened while a collection was) clears it, so "New …" here does not land in a folder from
+  // what was open before.
+  // Its folders open once per visit to a row, as soon as the tree holds it: after a reload or a
+  // deep link the rows arrive after the route does, and a remembered closed folder must not hide
+  // the page that is open. Once per visit, so a collapse made while it stays open is respected.
+  const revealedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!openPageId) return;
-    setSelectedId(openPageId);
-    const above = ancestorIds(tree, openPageId);
+    setSelectedId(openId);
+    revealedFor.current = null; // a new visit, even back to the same row
+  }, [openId]);
+
+  useEffect(() => {
+    if (!openId || revealedFor.current === openId || !tree.byId.has(openId)) return;
+    revealedFor.current = openId;
+    const above = ancestorIds(tree, openId);
     if (above.length > 0) {
       setCollapsed((prev) => new Set([...prev].filter((id) => !above.includes(id))));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
-  }, [openPageId]);
+  }, [openId, tree]);
 
-  /** Open these folders (and pages with subpages) so a new or moved row is visible. */
+  /** Open these folders (and items holding items) so a new or moved row is visible. */
   function reveal(ids: readonly string[]): void {
     setCollapsed((prev) => new Set([...prev].filter((id) => !ids.includes(id))));
   }
@@ -127,47 +146,104 @@ export function PageTree({ workspaceId }: { workspaceId: string | null }) {
     if (parentId !== null) reveal([parentId, ...ancestorIds(tree, parentId)]);
   }
 
-  async function handleNewPage(parentId: string | null): Promise<void> {
-    if (!workspaceId) return;
-    revealInside(parentId);
-    const id = await createPage(workspaceId, parentId);
-    setSelectedId(id);
-    void navigate({ to: "/p/$pageId", params: { pageId: id } });
+  /**
+   * Move keyboard focus to a row's main button. At once when the row is already drawn, so the
+   * next key press acts on it; a frame later when it is not yet (a folder just opened, a rename
+   * field just closed).
+   */
+  function focusRow(id: string): void {
+    const find = () =>
+      bodyRef.current?.querySelector<HTMLElement>(
+        `[data-id="${CSS.escape(id)}"] > [data-testid="tree-row"] [${MAIN_ATTR}]`,
+      );
+    const now = find();
+    if (now) {
+      now.focus();
+      return;
+    }
+    requestAnimationFrame(() => find()?.focus());
   }
 
-  function handleStartFolder(): void {
-    if (!workspaceId) return;
-    const parentId = createTarget(tree, selectedId);
+  async function handleNewItem(parentId: string | null): Promise<void> {
+    if (!source.enabled) return;
+    revealInside(parentId);
+    const id = await source.createItem(parentId);
+    setSelectedId(id);
+    source.open(id);
+  }
+
+  function handleStartFolder(parentId: string | null): void {
+    if (!source.enabled) return;
     revealInside(parentId);
     setRenamingId(null);
     setDraftParent(parentId);
   }
 
-  async function handleCommitDraft(name: string): Promise<void> {
+  async function handleCommitDraft(name: string, byKey: boolean): Promise<void> {
     const parentId = draftParent;
     setDraftParent(undefined);
     const trimmed = name.trim();
-    if (!workspaceId || parentId === undefined || !trimmed) return;
-    const id = await createFolder(workspaceId, parentId, trimmed);
+    if (!source.enabled || parentId === undefined || !trimmed) return;
+    const id = await source.createFolder(parentId, trimmed);
     setSelectedId(id);
+    if (byKey) focusRow(id);
   }
 
-  async function handleRename(id: string, name: string): Promise<void> {
+  function handleStartRename(id: string): void {
+    setDraftParent(undefined);
+    setRenamingId(id);
+  }
+
+  async function handleRename(id: string, name: string, byKey: boolean): Promise<void> {
     setRenamingId(null);
+    // Only after Enter: a rename committed by clicking elsewhere leaves focus where it went.
+    if (byKey) focusRow(id);
     const trimmed = name.trim();
     const row = tree.byId.get(id);
     if (!row || !trimmed || trimmed === row.title) return;
-    await renamePage(id, trimmed);
+    await source.rename(id, trimmed);
   }
 
-  async function handleDelete(row: TreeRow): Promise<void> {
-    const message = isFolder(row)
-      ? `Delete folder "${row.title || AUTO_TITLE}" and everything inside.`
-      : `Delete "${row.title || AUTO_TITLE}" and any subpages?`;
-    if (!window.confirm(message)) return;
-    // What the tree shows inside the row, nothing more (see deletePages).
-    await deletePages([row.id, ...descendantIds(tree, row.id)]);
-    void navigate({ to: "/" });
+  /**
+   * Delete with Undo instead of a confirm: the rows vanish now and the delete is written only
+   * once the Undo window closes (stores/pending-delete.ts). What goes is exactly what the tree
+   * shows inside the row (see deletePages in lib/pages.ts).
+   */
+  function handleDelete(row: TreeRow): void {
+    const ids = [row.id, ...descendantIds(tree, row.id)];
+    const wasOpen = openId !== null && ids.includes(openId);
+    const name = row.title || source.untitled;
+    schedule({
+      label: isFolder(row) ? `Folder "${name}" deleted.` : `"${name}" deleted.`,
+      ids,
+      commit: () => source.remove(ids),
+      restore: wasOpen && openId ? () => source.open(openId) : undefined,
+    });
+    if (wasOpen) source.afterDelete();
+  }
+
+  /**
+   * Delete from the keyboard (Delete, or Delete in the menu) and keep focus in the tree: on the
+   * next row the tree still shows after the deleted branch, else the one before it, else the
+   * tree body itself.
+   */
+  function deleteAndFocusNext(row: TreeRow): void {
+    const order = visibleOrder(tree, collapsed);
+    const gone = new Set([row.id, ...descendantIds(tree, row.id)]);
+    const at = order.indexOf(row.id);
+    const next =
+      order.slice(at + 1).find((id) => !gone.has(id)) ??
+      order
+        .slice(0, Math.max(at, 0))
+        .reverse()
+        .find((id) => !gone.has(id));
+    handleDelete(row);
+    if (next) {
+      setSelectedId(next);
+      focusRow(next);
+    } else {
+      bodyRef.current?.focus();
+    }
   }
 
   function handleSelect(row: TreeRow): void {
@@ -176,7 +252,7 @@ export function PageTree({ workspaceId }: { workspaceId: string | null }) {
       toggle(row.id);
       return;
     }
-    void navigate({ to: "/p/$pageId", params: { pageId: row.id } });
+    source.open(row.id);
   }
 
   function toggle(id: string): void {
@@ -185,75 +261,217 @@ export function PageTree({ workspaceId }: { workspaceId: string | null }) {
     );
   }
 
-  /** A drop is refused onto the dragged row itself or anything inside it: that makes a loop. */
-  function canDrop(dragId: string, target: string | null): boolean {
-    if (target === null) return true;
-    return target !== dragId && !descendantIds(tree, dragId).has(target);
+  async function handleMoveTo(id: string, parentId: string | null): Promise<void> {
+    revealInside(parentId);
+    await source.move(id, parentId);
+    setSelectedId(id);
   }
 
-  function handleDragOver(event: DragEvent, target: string | null): void {
+  // --- drag and drop ----------------------------------------------------------------------
+
+  /** A drop is refused into the dragged row itself or anything inside it: that makes a loop. */
+  function canJoin(dragId: string, parentId: string | null): boolean {
+    if (parentId === null) return true;
+    return parentId !== dragId && !descendantIds(tree, dragId).has(parentId);
+  }
+
+  function setOver(next: DropHint | undefined): void {
+    setDrag((prev) => {
+      if (!prev) return prev;
+      const same =
+        prev.over?.parentId === next?.parentId &&
+        prev.over?.intoId === next?.intoId &&
+        prev.over?.lineId === next?.lineId &&
+        prev.over?.linePlace === next?.linePlace;
+      return same ? prev : { ...prev, over: next };
+    });
+  }
+
+  /** Where a drop on this row would land, or undefined when it would be refused. */
+  function hintForRow(event: DragEvent, row: TreeRow, dragId: string): DropHint | undefined {
+    if (row.id === dragId) return undefined;
+    const box = event.currentTarget.getBoundingClientRect();
+    const place = dropPlace(row, box.height > 0 ? (event.clientY - box.top) / box.height : 0.5);
+    if (place === "into") {
+      return canJoin(dragId, row.id) ? { parentId: row.id, intoId: row.id } : undefined;
+    }
+    const parentId = shownParent(tree, row.id);
+    if (!canJoin(dragId, parentId)) return undefined;
+    const order = reorderedSiblings(tree, dragId, row.id, place);
+    if (order) return { parentId, lineId: row.id, linePlace: place, order };
+    // A folder beside an item (or the reverse) does not reorder: it joins the parent.
+    return { parentId, intoId: parentId ?? undefined };
+  }
+
+  function handleRowDragOver(event: DragEvent, row: TreeRow): void {
     // Rows stop the event even when refusing, so the empty-space handler below them does not
     // turn "not onto itself" into "out to the top level".
     event.stopPropagation();
-    if (!drag || !canDrop(drag.id, target)) {
-      if (drag && drag.over !== undefined) setDrag({ ...drag, over: undefined });
-      return;
-    }
+    const hint = drag ? hintForRow(event, row, drag.id) : undefined;
+    setOver(hint);
+    if (!hint) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
-    if (drag.over !== target) setDrag({ ...drag, over: target });
   }
 
-  async function handleDrop(event: DragEvent, target: string | null): Promise<void> {
-    event.preventDefault();
+  function handleRootDragOver(event: DragEvent): void {
     event.stopPropagation();
+    if (!drag) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setOver({ parentId: null });
+  }
+
+  async function land(hint: DropHint | undefined): Promise<void> {
     const dragId = drag?.id ?? null;
     setDrag(null);
-    if (dragId === null || !canDrop(dragId, target)) return;
-    revealInside(target);
-    await movePage(dragId, target);
+    if (dragId === null || !hint || !canJoin(dragId, hint.parentId)) return;
+    revealInside(hint.parentId);
+    if (hint.order) await source.place(dragId, hint.parentId, hint.order);
+    else await source.move(dragId, hint.parentId);
   }
 
+  function handleRowDrop(event: DragEvent, row: TreeRow): void {
+    event.preventDefault();
+    event.stopPropagation();
+    void land(drag ? hintForRow(event, row, drag.id) : undefined);
+  }
+
+  function handleRootDrop(event: DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    void land({ parentId: null });
+  }
+
+  // --- keyboard ---------------------------------------------------------------------------
+
+  /** VS Code's explorer keys, on whichever row has focus. */
+  function handleKeyDown(event: KeyboardEvent): void {
+    if (event.target instanceof HTMLInputElement || menu) return;
+    const focused = (event.target as HTMLElement).closest("[data-id]")?.getAttribute("data-id");
+    const currentId = focused ?? selectedId;
+    const order = visibleOrder(tree, collapsed);
+    if (order.length === 0) return;
+    const at = currentId ? order.indexOf(currentId) : -1;
+    const row = currentId ? tree.byId.get(currentId) : undefined;
+
+    const go = (id: string | undefined): void => {
+      if (!id) return;
+      setSelectedId(id);
+      focusRow(id);
+    };
+
+    switch (event.key) {
+      case "ArrowDown":
+        go(order[Math.min(at + 1, order.length - 1)]);
+        break;
+      case "ArrowUp":
+        go(order[Math.max(at - 1, 0)]);
+        break;
+      case "Home":
+        go(order[0]);
+        break;
+      case "End":
+        go(order[order.length - 1]);
+        break;
+      case "ArrowRight": {
+        if (!row) return;
+        const kids = tree.children.get(row.id) ?? [];
+        if ((isFolder(row) || kids.length > 0) && collapsed.has(row.id)) toggle(row.id);
+        else if (kids[0]) go(kids[0].id);
+        break;
+      }
+      case "ArrowLeft": {
+        if (!row) return;
+        const hasKids = (tree.children.get(row.id) ?? []).length > 0;
+        if ((isFolder(row) || hasKids) && !collapsed.has(row.id)) toggle(row.id);
+        else go(shownParent(tree, row.id) ?? undefined);
+        break;
+      }
+      case "F2":
+        if (row && isFolder(row)) handleStartRename(row.id);
+        else return;
+        break;
+      case "Delete":
+        if (!row) return;
+        deleteAndFocusNext(row);
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+  }
+
+  // --- context menu -----------------------------------------------------------------------
+
+  function handleContextMenu(event: MouseEvent, row: TreeRow): void {
+    event.preventDefault();
+    setSelectedId(row.id);
+    // The ContextMenu key reports (0, 0); open beside the row instead.
+    const box = event.currentTarget.getBoundingClientRect();
+    const fromKeyboard = event.clientX === 0 && event.clientY === 0;
+    setMenu({
+      rowId: row.id,
+      x: fromKeyboard ? box.left + 24 : event.clientX,
+      y: fromKeyboard ? box.bottom : event.clientY,
+    });
+  }
+
+  function closeMenu(refocus: boolean): void {
+    if (menu && refocus) focusRow(menu.rowId);
+    setMenu(null);
+  }
+
+  // A row can vanish under its open menu (a teammate deleted it, a sync moved it away): close
+  // the menu rather than leave the tree's keys switched off behind an invisible one.
+  useEffect(() => {
+    if (menu && !tree.byId.has(menu.rowId)) setMenu(null);
+  }, [menu, tree]);
+
   const ctx: TreeContext = {
+    source,
     tree,
     selectedId,
     collapsed,
     renamingId,
     draftParent,
-    dropOver: drag?.over,
+    drop: drag?.over,
     draggingId: drag?.id ?? null,
     onToggle: toggle,
     onSelect: handleSelect,
-    onStartRename: (id) => {
-      setDraftParent(undefined);
-      setRenamingId(id);
+    onStartRename: handleStartRename,
+    onRename: (id, name, byKey) => void handleRename(id, name, byKey),
+    onCancelRename: () => {
+      if (renamingId) focusRow(renamingId);
+      setRenamingId(null);
     },
-    onRename: (id, name) => void handleRename(id, name),
-    onCancelRename: () => setRenamingId(null),
-    onCommitDraft: (name) => void handleCommitDraft(name),
+    onCommitDraft: (name, byKey) => void handleCommitDraft(name, byKey),
     onCancelDraft: () => setDraftParent(undefined),
-    onAddPage: (parentId) => void handleNewPage(parentId),
-    onDelete: (row) => void handleDelete(row),
+    onAddInside: (parentId) => void handleNewItem(parentId),
+    onDelete: handleDelete,
+    onContextMenu: handleContextMenu,
     onDragStart: (event, id) => {
-      event.dataTransfer.setData(DRAG_TYPE, id);
+      event.dataTransfer.setData(source.dragType, id);
       event.dataTransfer.effectAllowed = "move";
+      setMenu(null);
       setDrag({ id, over: undefined });
     },
-    onDragOver: handleDragOver,
-    onDrop: (event, target) => void handleDrop(event, target),
+    onRowDragOver: handleRowDragOver,
+    onRowDrop: handleRowDrop,
     onDragEnd: () => setDrag(null),
   };
 
   const roots = tree.children.get(null) ?? [];
-  const rootDrop = drag !== null && drag.over === null;
+  const rootDrop = drag !== null && drag.over?.parentId === null && !drag.over.lineId;
+  const menuRow = menu ? tree.byId.get(menu.rowId) : undefined;
 
   return (
     <section
-      aria-label="Pages"
+      aria-label={source.heading}
       onDragLeave={(event) => {
         // Leaving the tree altogether (onto the page, say): nothing would land, so nothing lit.
         if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
-        setDrag((prev) => (prev && prev.over !== undefined ? { ...prev, over: undefined } : prev));
+        setOver(undefined);
       }}
     >
       {/* The header is top level too: a drop here moves a row out, and a click on it (outside
@@ -263,19 +481,24 @@ export function PageTree({ workspaceId }: { workspaceId: string | null }) {
         onClick={(event) => {
           if (!(event.target as HTMLElement).closest("button")) setSelectedId(null);
         }}
-        onDragOver={(event) => handleDragOver(event, null)}
-        onDrop={(event) => void handleDrop(event, null)}
+        onDragOver={handleRootDragOver}
+        onDrop={handleRootDrop}
       >
-        <span className="text-xs font-medium uppercase tracking-wide text-subtle">Pages</span>
+        <span className="text-xs font-medium uppercase tracking-wide text-subtle">
+          {source.heading}
+        </span>
         <div className="flex items-center gap-0.5">
           <HeaderButton
-            label="New page"
-            onClick={() => void handleNewPage(createTarget(tree, selectedId))}
+            label="New folder"
+            onClick={() => handleStartFolder(createTarget(tree, selectedId))}
           >
-            <NewPageIcon />
-          </HeaderButton>
-          <HeaderButton label="New folder" onClick={handleStartFolder}>
             <NewFolderIcon />
+          </HeaderButton>
+          <HeaderButton
+            label={source.newItemLabel}
+            onClick={() => void handleNewItem(createTarget(tree, selectedId))}
+          >
+            {source.newItemIcon}
           </HeaderButton>
         </div>
       </div>
@@ -283,180 +506,44 @@ export function PageTree({ workspaceId }: { workspaceId: string | null }) {
       {/* The empty space below the rows is the top level: clicking it clears the highlight (so
           "New" lands at the top), and dropping on it moves a row out of its folder. */}
       <div
-        data-testid="page-tree"
+        ref={bodyRef}
+        // Focusable only from code: the place focus lands when the last row is deleted.
+        tabIndex={-1}
+        data-testid={source.testId}
         className={`mb-4 min-h-10 rounded-md pb-6 ${rootDrop ? "bg-hover/40" : ""}`}
         onClick={(event) => {
           if (event.target === event.currentTarget) setSelectedId(null);
         }}
-        onDragOver={(event) => handleDragOver(event, null)}
-        onDrop={(event) => void handleDrop(event, null)}
+        onKeyDown={handleKeyDown}
+        onDragOver={handleRootDragOver}
+        onDrop={handleRootDrop}
       >
         {draftParent === null ? <DraftFolderRow ctx={ctx} depth={0} /> : null}
         {roots.length === 0 && draftParent !== null ? (
-          <p className="px-2 py-1.5 text-sm text-subtle">No pages yet</p>
+          <p className="px-2 py-1.5 text-sm text-subtle">{source.emptyText}</p>
         ) : (
           roots.map((row) => <TreeNode key={row.id} row={row} depth={0} ctx={ctx} />)
         )}
       </div>
-    </section>
-  );
-}
 
-function TreeNode({ row, depth, ctx }: { row: TreeRow; depth: number; ctx: TreeContext }) {
-  const children = ctx.tree.children.get(row.id) ?? [];
-  const folder = isFolder(row);
-  const expandable = folder || children.length > 0;
-  const expanded = !ctx.collapsed.has(row.id);
-  const selected = ctx.selectedId === row.id;
-  // A drop onto a page lands beside it, so the row that lights up is the folder it goes into.
-  const dropHere = ctx.draggingId !== null && ctx.dropOver === row.id;
-  const renaming = ctx.renamingId === row.id;
-  const name = row.title || AUTO_TITLE;
-
-  return (
-    <div data-testid="tree-node" data-id={row.id}>
-      <div
-        draggable={!renaming}
-        data-testid="tree-row"
-        data-kind={folder ? "folder" : "page"}
-        data-selected={selected ? "true" : undefined}
-        onDragStart={(event) => ctx.onDragStart(event, row.id)}
-        onDragOver={(event) => ctx.onDragOver(event, dropTarget(ctx.tree, row.id))}
-        onDrop={(event) => ctx.onDrop(event, dropTarget(ctx.tree, row.id))}
-        onDragEnd={ctx.onDragEnd}
-        className={`group flex items-center gap-1 rounded-md pr-1 ${
-          selected ? "bg-hover text-fg" : "text-muted hover:bg-hover/60"
-        } ${dropHere ? "ring-1 ring-inset ring-muted" : ""} ${
-          ctx.draggingId === row.id ? "opacity-50" : ""
-        }`}
-        style={{ paddingLeft: `${depth * INDENT_REM}rem` }}
-      >
-        {expandable ? (
-          <button
-            type="button"
-            onClick={() => ctx.onToggle(row.id)}
-            aria-label={expanded ? "Collapse" : "Expand"}
-            aria-expanded={expanded}
-            className="flex w-4 shrink-0 justify-center text-subtle"
-          >
-            <ChevronIcon open={expanded} className="h-3.5 w-3.5" />
-          </button>
-        ) : (
-          <span className="w-4 shrink-0" aria-hidden />
-        )}
-        {folder ? <FolderIcon className="h-4 w-4 shrink-0 text-subtle" /> : null}
-
-        {renaming ? (
-          <NameInput
-            initial={row.title}
-            label="Folder name"
-            onCommit={(value) => ctx.onRename(row.id, value)}
-            onCancel={ctx.onCancelRename}
-          />
-        ) : (
-          <button
-            type="button"
-            onClick={() => ctx.onSelect(row)}
-            onDoubleClick={folder ? () => ctx.onStartRename(row.id) : undefined}
-            title={folder ? "Double-click to rename" : undefined}
-            className="flex-1 truncate py-1.5 text-left text-sm"
-          >
-            {name}
-          </button>
-        )}
-
-        <button
-          type="button"
-          onClick={() => ctx.onAddPage(row.id)}
-          aria-label={folder ? "Add page to folder" : "Add subpage"}
-          title={folder ? "Add page to folder" : "Add subpage"}
-          className="invisible shrink-0 rounded px-1 text-subtle hover:text-fg group-hover:visible"
-        >
-          +
-        </button>
-        <button
-          type="button"
-          onClick={() => ctx.onDelete(row)}
-          aria-label={folder ? "Delete folder" : "Delete page"}
-          title={folder ? "Delete folder" : "Delete page"}
-          className="invisible shrink-0 rounded px-1 text-subtle hover:text-danger group-hover:visible"
-        >
-          ×
-        </button>
-      </div>
-
-      {expandable && expanded ? (
-        <>
-          {ctx.draftParent === row.id ? <DraftFolderRow ctx={ctx} depth={depth + 1} /> : null}
-          {children.map((child) => (
-            <TreeNode key={child.id} row={child} depth={depth + 1} ctx={ctx} />
-          ))}
-        </>
+      {menu && menuRow ? (
+        <TreeMenu
+          row={menuRow}
+          tree={tree}
+          source={source}
+          x={menu.x}
+          y={menu.y}
+          onClose={closeMenu}
+          actions={{
+            open: (row) => handleSelect(row),
+            addInside: (parentId) => void handleNewItem(parentId),
+            rename: handleStartRename,
+            move: (id, parentId) => void handleMoveTo(id, parentId),
+            remove: deleteAndFocusNext,
+          }}
+        />
       ) : null}
-    </div>
-  );
-}
-
-/** The row a new folder is named in, before it exists. Empty name or Escape: nothing created. */
-function DraftFolderRow({ ctx, depth }: { ctx: TreeContext; depth: number }) {
-  return (
-    <div className="flex items-center gap-1 pr-1" style={{ paddingLeft: `${depth * INDENT_REM}rem` }}>
-      <span className="w-4 shrink-0" aria-hidden />
-      <FolderIcon className="h-4 w-4 shrink-0 text-subtle" />
-      <NameInput
-        initial=""
-        label="Folder name"
-        onCommit={ctx.onCommitDraft}
-        onCancel={ctx.onCancelDraft}
-      />
-    </div>
-  );
-}
-
-/**
- * Inline name field. Enter or leaving the field commits; Escape cancels. Settles exactly once:
- * Enter unmounts the field, and the blur that unmounting fires must not commit a second time.
- */
-function NameInput({
-  initial,
-  label,
-  onCommit,
-  onCancel,
-}: {
-  initial: string;
-  label: string;
-  onCommit: (value: string) => void;
-  onCancel: () => void;
-}) {
-  const [value, setValue] = useState(initial);
-  const settled = useRef(false);
-
-  function settle(commit: boolean): void {
-    if (settled.current) return;
-    settled.current = true;
-    if (commit) onCommit(value);
-    else onCancel();
-  }
-
-  return (
-    <input
-      autoFocus
-      value={value}
-      aria-label={label}
-      onChange={(event) => setValue(event.target.value)}
-      onFocus={(event) => event.currentTarget.select()}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          settle(true);
-        } else if (event.key === "Escape") {
-          event.preventDefault();
-          settle(false);
-        }
-      }}
-      onBlur={() => settle(true)}
-      className="my-0.5 min-w-0 flex-1 rounded border border-line bg-app px-1.5 py-1 text-sm text-fg outline-none focus:border-muted"
-    />
+    </section>
   );
 }
 
