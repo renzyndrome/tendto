@@ -11,10 +11,10 @@ import { expect, test, type Page } from "./fixtures";
  * registry and every failure mode are covered by pytest in app/tests/test_ai_compose.py.
  */
 const TASKS = [
-  { key: "summarize", label: "Summarize", whole_document: true },
-  { key: "improve", label: "Improve writing", whole_document: false },
-  { key: "shorten", label: "Make shorter", whole_document: false },
-  { key: "fix", label: "Fix spelling & grammar", whole_document: false },
+  { key: "summarize", label: "Summarize", whole_document: true, scope: "editor" },
+  { key: "improve", label: "Improve writing", whole_document: false, scope: "editor" },
+  { key: "shorten", label: "Make shorter", whole_document: false, scope: "editor" },
+  { key: "fix", label: "Fix spelling & grammar", whole_document: false, scope: "editor" },
 ];
 
 /** Pretend an engine is (or isn't) configured, whatever the dev .env actually says. */

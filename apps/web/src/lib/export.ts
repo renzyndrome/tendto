@@ -3,7 +3,7 @@
  * (a) structured JSON and (b) plain-text Markdown. Pure local reads; nothing hits the network.
  */
 import type { BlockRow } from "./blocks/serialize";
-import { parseBlockContent } from "./blocks/text";
+import { parseBlockContent, type InlineRenderers } from "./blocks/text";
 import type { ItemRow } from "./items/mutations";
 import { db } from "./powersync/client";
 
@@ -65,11 +65,26 @@ async function collectWorkspace(workspaceId: string): Promise<WorkspaceExport> {
 }
 
 /**
+ * How a page link renders in the exported Markdown: `[[Page title]]`, the wikilink syntax
+ * Obsidian and most Markdown knowledge bases understand — so an exported vault keeps its links
+ * instead of flattening to loose words. The title is resolved from the CURRENT pages, not from
+ * the link's stored snapshot, so a page renamed after the link was made still exports right.
+ */
+function wikilinkRenderers(titles: ReadonlyMap<string, string>): InlineRenderers {
+  return {
+    pageLink: ({ pageId, title }) => {
+      const live = titles.get(pageId);
+      return `[[${(live ?? title).trim() || "Untitled"}]]`;
+    },
+  };
+}
+
+/**
  * A basic block → Markdown renderer. Maps the curated block set to Markdown and pulls inline
  * text from the block's `content` JSON. Approximate: styling and nested children are flattened.
  */
-function blockToMarkdown(block: BlockRow): string {
-  const { text, props } = parseBlockContent(block.content);
+function blockToMarkdown(block: BlockRow, renderers: InlineRenderers): string {
+  const { text, props } = parseBlockContent(block.content, renderers);
   switch (block.type) {
     case "heading": {
       const rawLevel = props.level;
@@ -93,6 +108,8 @@ function blockToMarkdown(block: BlockRow): string {
 }
 
 function buildMarkdown(pages: PageRow[], blocks: BlockRow[]): string {
+  const titles = new Map(pages.map((page) => [page.id, page.title]));
+  const renderers = wikilinkRenderers(titles);
   const blocksByPage = new Map<string, BlockRow[]>();
   for (const block of blocks) {
     // Item descriptions are blocks too (page_id null) — they belong to their item, not here.
@@ -106,7 +123,7 @@ function buildMarkdown(pages: PageRow[], blocks: BlockRow[]): string {
     const pageBlocks = [...(blocksByPage.get(page.id) ?? [])].sort(
       (a, b) => a.position - b.position,
     );
-    const body = pageBlocks.map(blockToMarkdown).join("\n\n");
+    const body = pageBlocks.map((block) => blockToMarkdown(block, renderers)).join("\n\n");
     return `# ${page.title || "Untitled"}\n\n${body}`.trimEnd();
   });
 

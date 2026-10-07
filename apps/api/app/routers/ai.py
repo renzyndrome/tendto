@@ -98,7 +98,12 @@ async def status(
         engine=engine,
         available=engine != "offline",
         tasks=[
-            TaskOut(key=task.key, label=task.label, whole_document=task.whole_document)
+            TaskOut(
+                key=task.key,
+                label=task.label,
+                whole_document=task.whole_document,
+                scope=task.scope,
+            )
             for task in TASKS.values()
         ],
     )
@@ -130,6 +135,10 @@ def _prepare(body: ComposeRequest, user: CurrentUser, provider: ChatProvider) ->
     if not text:
         raise HTTPException(status_code=422, detail="Nothing to work with")
 
+    question = (body.question or "").strip()
+    if task.scope == "search" and not question:
+        raise HTTPException(status_code=422, detail="Ask a question to search your notes.")
+
     engine = getattr(provider, "name", "custom")
     if engine == "offline":
         # The fallback echoes its input, which would silently replace someone's paragraph with
@@ -142,8 +151,15 @@ def _prepare(body: ComposeRequest, user: CurrentUser, provider: ChatProvider) ->
     if not take(user.id):
         raise HTTPException(status_code=429, detail="Too many AI requests — try again shortly.")
 
-    prompt, truncated = truncate(text)
-    return _Prepared(task=task, prompt=wrap_user_text(prompt), engine=engine, truncated=truncated)
+    sources, truncated = truncate(text)
+    prompt = wrap_user_text(sources)
+    if task.scope == "search":
+        # The question goes BEFORE the marker and the sources after it, so the injection rule
+        # covers the retrieved notes. Those extracts can come from any page in a shared
+        # workspace, i.e. from text a colleague wrote, which is precisely the content that must
+        # never be read as instructions. A question on an editor task is ignored.
+        prompt = f"Question:\n{question}\n\nSources:\n{prompt}"
+    return _Prepared(task=task, prompt=prompt, engine=engine, truncated=truncated)
 
 
 @router.post("/compose", response_model=ComposeResponse)

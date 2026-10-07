@@ -1,6 +1,7 @@
 /** UI-only state (Zustand). Content state lives in the PowerSync replica — never here. */
 import { create } from "zustand";
 
+import type { Source } from "../lib/ai/retrieve";
 import { storeActiveWorkspaceId } from "../lib/workspaces";
 
 interface UiState {
@@ -13,6 +14,14 @@ interface UiState {
    */
   knownWorkspaceIds: string[] | null;
   searchOpen: boolean;
+  /**
+   * How the open page editor accepts text, or null when no page is open.
+   *
+   * Registered by the editor and read by "Ask my notes", which lives in the command palette and
+   * therefore has no editor of its own to write to. UI wiring, not content: nothing is written
+   * until the user presses the button.
+   */
+  pageInsert: PageInsertTarget | null;
   toggleSidebar: () => void;
   setActiveWorkspace: (id: string | null) => void;
   setKnownWorkspaceIds: (ids: string[] | null) => void;
@@ -20,6 +29,12 @@ interface UiState {
   addKnownWorkspaceId: (id: string) => void;
   forgetWorkspaceId: (id: string) => void;
   setSearchOpen: (open: boolean) => void;
+  setPageInsert: (target: PageInsertTarget | null) => void;
+}
+
+export interface PageInsertTarget {
+  pageId: string;
+  insert: (text: string, sources: readonly Source[]) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -27,6 +42,7 @@ export const useUiStore = create<UiState>((set) => ({
   activeWorkspaceId: null,
   knownWorkspaceIds: null,
   searchOpen: false,
+  pageInsert: null,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   // Persisted so switching workspaces survives a reload (see bootstrapWorkspaces).
   setActiveWorkspace: (id) => {
@@ -46,4 +62,5 @@ export const useUiStore = create<UiState>((set) => ({
       knownWorkspaceIds: s.knownWorkspaceIds?.filter((known) => known !== id) ?? null,
     })),
   setSearchOpen: (open) => set({ searchOpen: open }),
+  setPageInsert: (target) => set({ pageInsert: target }),
 }));

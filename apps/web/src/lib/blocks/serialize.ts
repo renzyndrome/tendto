@@ -11,7 +11,7 @@
  * description share one implementation; the owner decides which column is set and which rows
  * are read back.
  */
-import type { Block, PartialBlock } from "@blocknote/core";
+import type { PartialBlock } from "@blocknote/core";
 
 import { db } from "../powersync/client";
 import { fingerprintRows, ownerKeyOf, publishSelfWrite } from "./self-writes";
@@ -38,6 +38,21 @@ export interface BlockRow {
   position: number;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * The shape `persistBlocks` needs from a BlockNote document — deliberately STRUCTURAL rather
+ * than `Block[]`. The editor's document type is parameterised by its schema, so naming the
+ * concrete type here would drag the editor's schema into every module that saves blocks (and
+ * break the moment the schema gains an inline node, which it has: see `pageLink`). These five
+ * fields are all this module ever reads.
+ */
+export interface PersistableBlock {
+  id: string;
+  type: string;
+  props?: unknown;
+  content?: unknown;
+  children?: unknown;
 }
 
 /** The BlockNote fields we persist inside the `content` JSON column. */
@@ -86,7 +101,7 @@ const inFlight = new Map<string, Promise<void>>();
 export function persistBlocks(
   owner: BlockOwner,
   workspaceId: string,
-  blocks: Block[],
+  blocks: readonly PersistableBlock[],
 ): Promise<void> {
   // Serialise per owner. The upsert is UPDATE-then-INSERT (PowerSync tables are SQLite views,
   // so `ON CONFLICT` is rejected), which is only safe if one save runs at a time: two
@@ -108,7 +123,7 @@ export function persistBlocks(
 async function writeBlocks(
   owner: BlockOwner,
   workspaceId: string,
-  blocks: Block[],
+  blocks: readonly PersistableBlock[],
 ): Promise<void> {
   const now = new Date().toISOString();
   const column = ownerColumn(owner);

@@ -62,6 +62,9 @@ class ComposeRequest(BaseModel):
     # is not the working limit, it is the "do not buffer and parse a 500MB body" limit. A hard
     # request-size cap belongs at the proxy; this stops the obvious case.
     text: str = Field(max_length=200_000)
+    #: Only for a "search"-scoped task ("Ask my notes"), where `text` carries the sources and
+    #: this carries what to ask of them. Required for those, ignored for the editor tasks.
+    question: str | None = Field(default=None, max_length=2_000)
 
 
 class ComposeResponse(BaseModel):
@@ -76,6 +79,8 @@ class TaskOut(BaseModel):
     key: str
     label: str
     whole_document: bool
+    #: "editor" or "search" — which surface should offer this task. See app.ai.compose.Task.
+    scope: str
 
 
 class EngineStatus(BaseModel):

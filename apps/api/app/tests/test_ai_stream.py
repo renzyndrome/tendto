@@ -166,3 +166,32 @@ async def test_streaming_shares_the_rate_limit(client: AsyncClient) -> None:
     assert (await client.post("/ai/compose/stream", json=body)).status_code == 429
     # ...and it is one shared allowance, not one per endpoint.
     assert (await client.post("/ai/compose", json=body)).status_code == 429
+
+
+async def test_ask_streams_like_any_other_task(client: AsyncClient) -> None:
+    """The answer arrives over the same channel; only the prompt shape differs."""
+    provider = StreamingFake(["You said ", "Friday [1]."])
+    _use(provider)
+
+    res = await client.post(
+        "/ai/compose/stream",
+        json={
+            "task": "ask",
+            "text": "[1] Launch plan\nShip on Friday.",
+            "question": "When do we ship?",
+        },
+    )
+
+    assert res.status_code == 200
+    events = _events(res.text)
+    assert [e["delta"] for e in events if "delta" in e] == ["You said ", "Friday [1]."]
+    assert events[-1] == {"done": True, "text": "You said Friday [1].", "truncated": False}
+
+
+async def test_streaming_ask_still_needs_a_question(client: AsyncClient) -> None:
+    """The guard lives in the shared _prepare, so the stream cannot slip past it."""
+    _use(StreamingFake(["x"]))
+
+    res = await client.post("/ai/compose/stream", json={"task": "ask", "text": "[1] Notes"})
+
+    assert res.status_code == 422

@@ -14,6 +14,7 @@
 import { platform } from "@powersync-platform";
 
 import { setupFts, teardownFts } from "./fts";
+import { setupPageLinks, teardownPageLinks } from "./page-links";
 
 /** The local replica. All content reads in the app go through this. */
 export const db = platform.db;
@@ -72,6 +73,8 @@ export async function connectDb(): Promise<void> {
   // Build the search index before opening the stream, so the triggers are in place for the
   // rows the first sync applies. Non-fatal: search falls back to LIKE scans if it fails.
   await setupFts(db);
+  // Same contract as the search index: derived, local, rebuilt here, dropped on sign-out.
+  await setupPageLinks(db);
   installReconnectNudges();
   await platform.connect();
 }
@@ -95,6 +98,7 @@ export async function disconnectAndClearDb(): Promise<void> {
   // The search index is a copy of this account's titles and block text — clear it too, and
   // before the replica, so its triggers are gone before the rows they watch are removed.
   await teardownFts(db);
+  await teardownPageLinks(db);
   try {
     await db.disconnectAndClear();
   } catch (err) {

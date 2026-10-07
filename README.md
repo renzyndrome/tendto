@@ -96,6 +96,9 @@ make desktop-test  # Rust checks for the desktop shell (fmt, clippy, unit tests)
 - **Interactive AI** — per-page Summarize and inline Ask AI (improve / shorten / fix), streamed
   as it is written. Nothing touches the document until you press Keep.
 - **The recap is ambient** — it arrives each evening at a time you choose (9pm by default).
+- **Second brain** — link pages with `[[`, see what points back at a page, get related pages
+  suggested from the words you actually use, and ask a question of your own notes and get an
+  answer that cites them. See [docs/second-brain.md](./docs/second-brain.md).
 - Plus light/dark theming and opt-in due/Pomodoro reminders.
 
 **Phases 0–3 are closed**, including ranked FTS5 search, the RLS backstop and the backup/restore

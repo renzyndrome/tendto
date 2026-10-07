@@ -22,6 +22,7 @@ One line per memory. Full content in the linked files; keep this index lean.
 - [Calendar day view](calendar-day-view.md) — items are deadlines not meetings (one-slot blocks, no duration); the all-day row IS "no time"; which Google behaviours were dropped
 - [Replica timestamps & the midnight trap](replica-timestamps.md) — `updated_at` text changes across the sync round-trip (compare instants); time-of-day specs that break near midnight
 - [Backup & restore](backup-restore.md) — restoring Postgres is only half a restore: PowerSync's bucket storage must be wiped or replication is silently dead
+- [Second brain: links, backlinks, related, ask](page-links.md) — `[[` is wired to a single `[` (BlockNote cannot match a 2-char trigger mid-line); React events never reach an inline node view; `useQuery` returns `[]` before it loads; `page_links` is derived and trigger-built, so neither it nor FTS can be watched with `useQuery`; FTS5 refuses `bm25()` in an aggregate; ask-my-notes retrieves on the device and puts the question before the injection marker
 - [RLS backstop](rls-backstop.md) — installed but NOT forced (the owner bypasses); the ordered steps to make it bind, and the policy-recursion trap
 - [PWA install](pwa-install.md) — icons committed not built (sharp in Docker), our own SW registration for the hourly update check, and why the PWA E2E needs its own config
 - [PowerSync version alignment](powersync-version-alignment.md) — the four JS packages are pinned as a set by the alpha Tauri plugin; two copies of @powersync/common break Schema at runtime
