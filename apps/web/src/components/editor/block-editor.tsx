@@ -25,7 +25,7 @@ import {
   useCreateBlockNote,
 } from "@blocknote/react";
 import { useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { loadEngineStatus, type AiTask } from "../../lib/ai/compose";
 import { AiPanel } from "./ai-panel";
@@ -77,6 +77,54 @@ function AskAiButton({ onClick }: { onClick: () => void }) {
           so a label-only button is a blank square on screen. */}
       Ask AI
     </Components.FormattingToolbar.Button>
+  );
+}
+
+/**
+ * Does this document hold anything yet?
+ *
+ * A brand-new page is one empty paragraph, which is what BlockNote starts with — that is not
+ * content, it is a cursor. Anything else counts: text, or a block that is not a paragraph (an
+ * image or a divider says something even with no words in it).
+ */
+function documentHasContent(blocks: readonly { type: string; content?: unknown }[]): boolean {
+  return blocks.some((block) => {
+    if (block.type !== "paragraph") return true;
+    return Array.isArray(block.content) && block.content.length > 0;
+  });
+}
+
+/**
+ * "Summarize", shown only once there is something to summarize.
+ *
+ * Its own component, subscribed to the editor's content signal, so that a page going from
+ * empty to non-empty re-renders this button and nothing else. Putting the same state in
+ * BlockEditor re-rendered the editor on the first keystroke and closed any open toolbar with it.
+ */
+function SummarizeRow({
+  subscribe,
+  read,
+  onClick,
+}: {
+  subscribe: (listener: () => void) => () => void;
+  read: () => boolean;
+  onClick: () => void;
+}) {
+  const hasContent = useSyncExternalStore(subscribe, read, read);
+  if (!hasContent) return null;
+  return (
+    // Quiet and right-aligned: a page you never want summarized should not have to look at a
+    // prominent button forever.
+    <div className="mb-1 flex justify-end">
+      <button
+        type="button"
+        onClick={onClick}
+        data-testid="summarize-page"
+        className="rounded px-2 py-1 text-xs text-subtle hover:bg-hover hover:text-fg"
+      >
+        Summarize
+      </button>
+    </div>
   );
 }
 
@@ -166,6 +214,7 @@ export function BlockEditor({
     }
     if (!dirty.current || !workspaceId) return;
     dirty.current = false;
+    publishContent(documentHasContent(editor.document));
     inFlight.current = true;
     report.current?.("saving");
     void persistBlocks(stableOwner, workspaceId, editor.document).then(
@@ -213,6 +262,31 @@ export function BlockEditor({
     // Only on the first mount for this owner.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stableOwner]);
+
+  /*
+   * Whether the body holds anything, published as an external store rather than kept in state.
+   *
+   * Two things this must not do, both learned the hard way. It must not re-render BlockEditor:
+   * a re-render tears down whatever floating toolbar the selection had open, so "Ask AI"
+   * vanishes mid-click. And it must not read `editor.document` on every keystroke — that
+   * serializes the entire ProseMirror document, and doing it per key slowed typing enough to
+   * make the toolbar miss its moment. The answer is recomputed in the debounced save, which
+   * was already reading the document anyway.
+   */
+  const hasContent = useRef(initialBlocks.length > 0);
+  const contentListeners = useRef(new Set<() => void>());
+  const subscribeContent = useCallback((listener: () => void) => {
+    contentListeners.current.add(listener);
+    return () => {
+      contentListeners.current.delete(listener);
+    };
+  }, []);
+  const readContent = useCallback(() => hasContent.current, []);
+  const publishContent = useCallback((next: boolean) => {
+    if (next === hasContent.current) return;
+    hasContent.current = next;
+    for (const listener of contentListeners.current) listener();
+  }, []);
 
   const handleChange = useCallback(() => {
     dirty.current = true;
@@ -414,18 +488,7 @@ export function BlockEditor({
   return (
     <div ref={surfaceRef} className={compact ? "tendto-compact-editor" : undefined}>
       {hasAi ? (
-        // Quiet and right-aligned: a page you never want summarized should not have to look at
-        // a prominent button forever. It is absent entirely when no engine is configured.
-        <div className="mb-1 flex justify-end">
-          <button
-            type="button"
-            onClick={summarizePage}
-            data-testid="summarize-page"
-            className="rounded px-2 py-1 text-xs text-subtle hover:bg-hover hover:text-fg"
-          >
-            Summarize
-          </button>
-        </div>
+        <SummarizeRow subscribe={subscribeContent} read={readContent} onClick={summarizePage} />
       ) : null}
 
       <BlockNoteView

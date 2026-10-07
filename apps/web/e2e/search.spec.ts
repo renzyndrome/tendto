@@ -23,7 +23,9 @@ test.describe("search", () => {
     const dialog = page.getByRole("dialog", { name: "Search" });
     await dialog.getByPlaceholder("Search pages, items, blocks…").fill(marker);
 
-    const hit = dialog.getByText(marker).first();
+    // Scoped to the results: with an AI engine configured the palette also offers an "Ask my
+    // notes" row, which echoes the query back and would match this text first.
+    const hit = dialog.getByTestId("search-results").getByText(marker).first();
     await expect(hit).toBeVisible({ timeout: 10_000 });
     await hit.click();
 
@@ -49,7 +51,8 @@ test.describe("search", () => {
       await page.getByRole("button", { name: /search/i }).click();
       const dialog = page.getByRole("dialog", { name: "Search" });
       await dialog.getByPlaceholder("Search pages, items, blocks…").fill(term);
-      return dialog;
+      // The results only — never the "Ask my notes" row, which repeats whatever was typed.
+      return dialog.getByTestId("search-results");
     };
     const closeSearch = async () => {
       await page.keyboard.press("Escape");

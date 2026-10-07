@@ -43,6 +43,19 @@ function applyToDocument(resolved: ResolvedTheme): void {
   document.documentElement.classList.toggle("dark", resolved === "dark");
 }
 
+/**
+ * Show a theme without choosing it — what makes Personalization's preview a preview.
+ *
+ * Deliberately separate from `setMode`, which persists: a preview the user cancels must leave
+ * nothing behind, and a preview that wrote to storage would survive a reload they never asked
+ * for. The store is updated too, so the editor (which is handed `resolved`) follows along.
+ */
+export function previewTheme(mode: ThemeMode): void {
+  const resolved = resolveTheme(mode);
+  applyToDocument(resolved);
+  useThemeStore.setState({ resolved });
+}
+
 interface ThemeState {
   mode: ThemeMode;
   resolved: ResolvedTheme;

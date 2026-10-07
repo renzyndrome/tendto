@@ -1,42 +1,49 @@
-import { expect, test } from "./fixtures";
+import { expect, test, type Page } from "./fixtures";
 
 /**
- * Theme mode — System → Light → Dark, applied as the `dark` class on <html> (Tailwind's class
- * strategy) and persisted per device. The regression this guards: the BlockNote editor used to
- * follow `prefers-color-scheme` on its own, rendering a dark editor inside a light shell.
+ * Theme mode — System, Light or Dark, applied as the `dark` class on <html> (Tailwind's class
+ * strategy) and persisted per device. It is chosen in Personalization, alongside the other two
+ * things that decide how the app looks.
+ *
+ * The regression this guards: the BlockNote editor used to follow `prefers-color-scheme` on its
+ * own, rendering a dark editor inside a light shell.
  */
+async function openPersonalization(page: Page) {
+  await page.getByRole("button", { name: "Personalization" }).click();
+  await expect(page.getByTestId("personalization")).toBeVisible();
+}
+
 test.describe("theme", () => {
-  test("cycles system → light → dark and persists across reload", async ({ authedPage: page }) => {
+  test("picks a theme, and keeps it across a reload", async ({ authedPage: page }) => {
     const html = page.locator("html");
-    const toggle = page.getByTestId("theme-toggle");
 
-    // Default is System. The Playwright context has no colour-scheme preference set, so the
+    // Default is System. The Playwright context states no colour-scheme preference, so the
     // resolved theme is light.
-    await expect(toggle).toContainText("System");
     await expect(html).not.toHaveClass(/dark/);
 
-    await toggle.click();
-    await expect(toggle).toContainText("Light");
-    await expect(html).not.toHaveClass(/dark/);
+    await openPersonalization(page);
+    await expect(page.getByTestId("pref-theme-system")).toHaveAttribute("aria-pressed", "true");
 
-    await toggle.click();
-    await expect(toggle).toContainText("Dark");
+    await page.getByTestId("pref-theme-dark").click();
+    // Applied before saving — the page behind the dialog is the preview.
+    await expect(html).toHaveClass(/dark/);
+
+    await page.getByTestId("pref-save").click();
+    await expect(page.getByTestId("personalization")).toHaveCount(0);
     await expect(html).toHaveClass(/dark/);
 
     // Persisted per device: the choice survives a reload, with no light flash on boot.
     await page.reload();
-    await expect(page.getByTestId("theme-toggle")).toContainText("Dark", { timeout: 30_000 });
-    await expect(html).toHaveClass(/dark/);
+    await expect(html).toHaveClass(/dark/, { timeout: 30_000 });
   });
 
   test("dark mode themes the editor, not just the shell", async ({ authedPage: page }) => {
     await page.getByRole("button", { name: "New page" }).click();
     await expect(page.getByTestId("page-title")).toBeVisible();
 
-    // Switch to Dark (System → Light → Dark).
-    const toggle = page.getByTestId("theme-toggle");
-    await toggle.click();
-    await toggle.click();
+    await openPersonalization(page);
+    await page.getByTestId("pref-theme-dark").click();
+    await page.getByTestId("pref-save").click();
     await expect(page.locator("html")).toHaveClass(/dark/);
 
     // BlockNote is driven by our store, so its own theme attribute must follow. Without this

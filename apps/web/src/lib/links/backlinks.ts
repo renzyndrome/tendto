@@ -7,6 +7,7 @@
  * search. Obsidian separates them for the same reason: one is a decision, the other is a hint.
  */
 import { blockRowToText } from "../blocks/text";
+import { isAutoTitle } from "../pages";
 import { db } from "../powersync/client";
 import { isFtsReady, toPhraseQuery } from "../powersync/fts";
 import { isPageLinksReady } from "../powersync/page-links";
@@ -76,7 +77,9 @@ export async function unlinkedMentionsFor(
   title: string,
 ): Promise<Backlink[]> {
   const trimmed = title.trim();
-  if (!isFtsReady() || trimmed.length < MIN_MENTION_TITLE || trimmed === "Untitled") return [];
+  // An app-chosen name is not worth hunting for in prose: every blank page would "mention"
+  // every other one.
+  if (!isFtsReady() || trimmed.length < MIN_MENTION_TITLE || isAutoTitle(trimmed)) return [];
 
   const match = toPhraseQuery(trimmed);
   if (!match) return [];

@@ -51,6 +51,22 @@
 }
 
 /*
+ * The editor's own font and size, bound to what Personalization sets.
+ *
+ * This targets `.bn-editor.bn-default-styles` — the contenteditable itself — and not
+ * `--bn-font-family` on the root, which looks like the knob but is not: BlockNote hardcodes
+ * `font-family` and `font-size: 16px` on the editor element, and that beats a variable set on
+ * an ancestor. Headings scale in `em` from this base, so the hierarchy survives a size change.
+ *
+ * The fallbacks are what the editor looked like before the setting existed, so a browser with
+ * no stored preference (and the moment before the inline script runs) renders unchanged.
+ */
+.bn-editor.bn-default-styles {
+  font-family: var(--tendto-font, Inter, ui-sans-serif, system-ui, sans-serif);
+  font-size: var(--tendto-font-size, 16px);
+}
+
+/*
  * BlockNote theming. We pass `theme` explicitly (see page-editor.tsx) so its menus and
  * toolbars follow our mode, but its themes also paint the editor SURFACE — in dark that's
  * #1f1f1f, which reads as a floating card on our near-black page while light blends
@@ -108,7 +124,7 @@
    * the loudest thing on screen. Headings scale off this via their `em`-based --level, so the
    * hierarchy is preserved at the smaller base.
    */
-  font-size: 0.875rem;
+  font-size: calc(var(--tendto-font-size, 16px) * 0.875);
   line-height: 1.65;
 }
 

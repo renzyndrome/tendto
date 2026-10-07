@@ -20,7 +20,7 @@
  * second or two after it went up. The server keeps the client's edit time (see
  * `_incoming_updated_at` in sync.py), so the instant survives exactly; only the spelling does not.
  */
-function toInstant(value: string): number {
+export function toInstant(value: string): number {
   // Postgres text form → ISO: the space becomes "T", and a bare "+00" offset gains its minutes.
   const iso = value.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00");
   const parsed = Date.parse(iso);

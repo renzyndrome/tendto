@@ -182,36 +182,38 @@ export function SearchPalette() {
                 </p>
               ) : null}
 
-              <ResultGroup label="Pages">
-                {results.pages.map((hit) => (
-                  <ResultRow
-                    key={hit.id}
-                    badge="Page"
-                    label={hit.title}
-                    onSelect={() => go(hit)}
-                  />
-                ))}
-              </ResultGroup>
-              <ResultGroup label="Items">
-                {results.items.map((hit) => (
-                  <ResultRow
-                    key={hit.id}
-                    badge="Item"
-                    label={hit.title}
-                    onSelect={() => go(hit)}
-                  />
-                ))}
-              </ResultGroup>
-              <ResultGroup label="Blocks">
-                {results.blocks.map((hit) => (
-                  <ResultRow
-                    key={hit.id}
-                    badge="Block"
-                    label={hit.preview}
-                    onSelect={() => go(hit)}
-                  />
-                ))}
-              </ResultGroup>
+              <div data-testid="search-results">
+                <ResultGroup label="Pages">
+                  {results.pages.map((hit) => (
+                    <ResultRow
+                      key={hit.id}
+                      badge="Page"
+                      label={hit.title}
+                      onSelect={() => go(hit)}
+                    />
+                  ))}
+                </ResultGroup>
+                <ResultGroup label="Items">
+                  {results.items.map((hit) => (
+                    <ResultRow
+                      key={hit.id}
+                      badge="Item"
+                      label={hit.title}
+                      onSelect={() => go(hit)}
+                    />
+                  ))}
+                </ResultGroup>
+                <ResultGroup label="Blocks">
+                  {results.blocks.map((hit) => (
+                    <ResultRow
+                      key={hit.id}
+                      badge="Block"
+                      label={hit.preview}
+                      onSelect={() => go(hit)}
+                    />
+                  ))}
+                </ResultGroup>
+              </div>
             </>
           )}
         </div>

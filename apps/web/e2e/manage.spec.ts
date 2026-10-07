@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures";
+import { expectNewPageOpened } from "./helpers/pages";
 
 /**
  * Solo use — managing content: delete a page and delete a collection (both confirm-gated), and
@@ -47,7 +48,7 @@ test.describe("manage pages & collections", () => {
     // don't rename the parent by mistake.
     await page.getByRole("button", { name: parent }).hover();
     await page.getByRole("button", { name: "Add subpage" }).click();
-    await expect(page.getByTestId("page-title")).toHaveValue("Untitled");
+    await expectNewPageOpened(page);
     await page.getByTestId("page-title").fill(child);
     await page.waitForTimeout(900);
 

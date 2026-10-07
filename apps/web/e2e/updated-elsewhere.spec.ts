@@ -54,4 +54,43 @@ test.describe("updated elsewhere", () => {
       await device2.close();
     }
   });
+
+  test("re-opening a page that already has content does not accuse anyone", async ({
+    authedPage: page,
+  }) => {
+    const marker = `solo-${Date.now().toString(36)}`;
+
+    /*
+     * The single-device case, which the test above structurally cannot cover: it only ever
+     * looks at a page created seconds earlier, whose body is still empty at the moment the
+     * watcher mounts. The notice used to appear on EVERY page that already had content, on one
+     * machine, because the watching query reports an empty result while it is still loading and
+     * that empty document was adopted as the baseline.
+     */
+    await page.getByRole("button", { name: "New page" }).click();
+    const editor = page.locator('[contenteditable="true"]').first();
+    await expect(editor).toBeVisible({ timeout: 20_000 });
+    await editor.click();
+    await editor.pressSequentially(marker);
+    await page.waitForTimeout(1500); // debounced save
+
+    // Leave, so coming back is a fresh mount onto a body that is already there.
+    await page.getByRole("button", { name: "Calendar" }).click();
+    await page.getByRole("button", { name: "Untitled" }).first().click();
+    await expect(page.locator('[contenteditable="true"]').first()).toContainText(marker, {
+      timeout: 20_000,
+    });
+
+    // Long enough for the query to settle, which is when the false notice used to appear.
+    await page.waitForTimeout(2500);
+    await expect(page.getByTestId("updated-elsewhere")).toBeHidden();
+
+    // A full reload is the other path that remounts the watcher over existing content.
+    await page.reload();
+    await expect(page.locator('[contenteditable="true"]').first()).toContainText(marker, {
+      timeout: 30_000,
+    });
+    await page.waitForTimeout(2500);
+    await expect(page.getByTestId("updated-elsewhere")).toBeHidden();
+  });
 });

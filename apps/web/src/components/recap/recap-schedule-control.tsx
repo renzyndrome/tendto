@@ -1,9 +1,9 @@
 /**
  * When the evening recap arrives, whether it arrives at all, and whether it *can*.
  *
- * Lives on the recap page rather than in a settings dialog: this is the one screen where
- * someone thinks "I'd like this every evening", and the app has no user-settings panel to add
- * a row to. Putting it here costs no new surface.
+ * Lives on the recap page rather than in Personalization, which is about how the app LOOKS.
+ * This is the one screen where someone thinks "I'd like this every evening", so the setting is
+ * where the thought is. Moving it into a dialog would only make it harder to find.
  *
  * The row is deliberately honest about the whole chain, because three separate things have to
  * be true before anything arrives — the schedule is on, the browser has granted notifications,

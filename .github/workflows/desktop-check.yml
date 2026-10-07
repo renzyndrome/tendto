@@ -1,0 +1,42 @@
+# Keep the desktop shell compiling. Runs on the pull request, so a Rust mistake is not found
+# at tag time — when the only way out is a new tag.
+#
+# Linux only: it is the platform the shell is tested on, and the one the release actually
+# supports. The cross-platform question is answered by the release build itself.
+name: Desktop check
+
+on:
+  pull_request:
+    paths:
+      - "apps/desktop/**"
+      - "apps/web/**"
+      - ".github/workflows/desktop-check.yml"
+
+jobs:
+  rust:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System libraries
+        # Same list as the release job. `libclang-dev` is the one people leave out.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev pkg-config patchelf libclang-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: Format, lint, test
+        working-directory: apps/desktop/src-tauri
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test

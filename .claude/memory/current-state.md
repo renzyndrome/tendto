@@ -177,5 +177,12 @@ Branch `feat/fts-search-and-sync-hardening`, on top of the Phase 3 remainder.
 **New gates:** `make e2e-pwa` and `make desktop-test`. `make desktop-deps` prints the one-time
 system setup; it needs a `sudo apt` line, so it is a manual step.
 
-**Still open:** the WebKitGTK editor spike (the go/no-go for the Linux shell), `make desktop-build`
-(no release bundle produced yet), plus Stripe and pgvector from earlier phases.
+**Closed since:** the WebKitGTK editor spike passed by hand on 2026-09-09 (see docs/desktop.md),
+and `make desktop-build` has produced a `.deb` and an `.AppImage`. Releases are built by
+`.github/workflows/desktop-release.yml` on a `v*` tag — the repo's first CI of any kind — and left
+as a draft, because Linux is the only tested platform.
+
+**Still open:** the three `VITE_*` repository variables the release workflow needs, which cannot be
+set until a backend is actually deployed. Until then a tag builds an app pointed at localhost, and
+the Vite config refuses outright if the variables are missing. Plus Stripe and pgvector from
+earlier phases.

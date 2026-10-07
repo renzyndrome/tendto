@@ -260,7 +260,20 @@ export function ItemDetail({ row, columns, workspaceId, onClose, onDeleted }: It
               </span>
             </div>
             {external.changed ? (
-              <UpdatedElsewhere variant="compact" onReload={() => setRevision((n) => n + 1)} />
+              <UpdatedElsewhere
+                variant="compact"
+                onReload={() => {
+                  /*
+                   * `adopt()` as well as the re-hydrate, because this hook lives OUTSIDE the
+                   * part that remounts — only the inner editor is keyed by `revision`. Without
+                   * it the baseline still points at the state from before the reload, so the
+                   * notice stays on screen after the user has already acted on it, until some
+                   * later self-write happens to match.
+                   */
+                  external.adopt();
+                  setRevision((n) => n + 1);
+                }}
+              />
             ) : null}
             {blocks === null ? (
               <Spinner label="Loading…" />
@@ -286,7 +299,11 @@ export function ItemDetail({ row, columns, workspaceId, onClose, onDeleted }: It
             {/* The CARD's workspace, not the active one: they are the same today, but pinning a
                 comment to a workspace its card doesn't live in would hide it from the people
                 looking at that card. */}
-            <CommentSection owner={{ kind: "item", id: row.id }} workspaceId={row.workspace_id} />
+            <CommentSection
+              owner={{ kind: "item", id: row.id }}
+              workspaceId={row.workspace_id}
+              variant="card"
+            />
           </div>
         </div>
 

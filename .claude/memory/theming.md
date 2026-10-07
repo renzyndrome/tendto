@@ -37,3 +37,20 @@ Added 2026-08-04 (dark mode + theme toggle). The *why*, not the what.
   themes. Only its neutral entry became `bg-subtle`.
 
 See [[local-dev-setup]] for the trap that editing `tailwind.config.js` needs a Vite restart.
+
+## Personalization (2026-09-16)
+
+The theme is chosen in the **Personalization** dialog now (`components/layout/personalization.tsx`),
+alongside the editor's font and size; the sidebar's cycling Theme toggle is gone. Three notes:
+
+- **The inline script in `index.html` now mirrors TWO keys**, `tendto:theme` and
+  `tendto:personalization`, and sets `--tendto-font` / `--tendto-font-size` before first paint.
+  Same rule as before: change it in both places or the setting flashes on load.
+- **`--bn-font-family` is a decoy.** BlockNote hardcodes `font-family` and `font-size: 16px` on
+  `.bn-editor.bn-default-styles` — the contenteditable itself — which beats a variable set on an
+  ancestor. `index.css` binds that selector directly.
+- **`main.tsx` applies the stored preference at boot** even though the inline script already did,
+  so one spelling of each font stack is authoritative. Without it the value in force came from the
+  CSS fallback, and cancelling a preview restored an equivalent but differently-worded stack.
+- `previewTheme(mode)` paints without persisting; `setMode` is the commit. A preview the user
+  cancels must leave nothing behind.

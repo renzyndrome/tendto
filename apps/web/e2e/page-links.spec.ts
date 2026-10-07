@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures";
+import { expectNewPageOpened } from "./helpers/pages";
 
 /**
  * Second brain, phase A — `[[` page links.
@@ -25,9 +26,7 @@ test.describe("page links", () => {
     await expect.poll(() => page.url(), { timeout: 20_000 }).not.toBe(before);
     await expect(page).toHaveURL(/\/p\//, { timeout: 20_000 });
     await expect(editorOf(page)).toBeVisible({ timeout: 20_000 });
-    // `createPage` names a new page "Untitled" — that value appearing is the proof that the
-    // title box has remounted for the NEW page rather than still showing the previous one.
-    await expect(page.getByTestId("page-title")).toHaveValue("Untitled", { timeout: 20_000 });
+    await expectNewPageOpened(page);
     await page.getByTestId("page-title").fill(title);
     // The rename is debounced (400ms) and the sidebar is the replica's own view of it.
     await expect(page.getByRole("button", { name: title })).toBeVisible({ timeout: 20_000 });

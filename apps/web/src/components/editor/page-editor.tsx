@@ -6,12 +6,15 @@
  * remounts it with fresh content. Persistence lives in BlockEditor — the same component the
  * card description uses.
  */
+import { useQuery } from "@powersync/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useExternalEdit } from "../../lib/blocks/external-edit";
+import { exactTime, shortDate, timeAgo } from "../../lib/comments/format";
 import { loadBlocks, pageOwner, type BlockRow } from "../../lib/blocks/serialize";
 import { clearDraft, draftKey, onPageHidden, readDraft, writeDraft } from "../../lib/drafts";
-import { renamePage } from "../../lib/pages";
+import { usePageStamps } from "../../lib/page-stamps";
+import { isAutoTitle, renamePage } from "../../lib/pages";
 import { db } from "../../lib/powersync/client";
 import { usePresence } from "../../lib/presence/use-presence";
 import { useUiStore } from "../../stores/ui";
@@ -115,6 +118,7 @@ function PageEditorInner({
         <PresenceBar others={others} />
       </div>
       <PageTitle pageId={pageId} initialTitle={initialTitle} />
+      <PageStamps pageId={pageId} />
       {external.changed ? <UpdatedElsewhere onReload={onReload} /> : null}
       <BlockEditor
         owner={pageOwner(pageId)}
@@ -126,13 +130,67 @@ function PageEditorInner({
 
       {/* Below the body, in the same column: a page's discussion belongs after the page, not in
           a side panel competing with it for attention. */}
-      <div className="mt-10 border-t border-line pt-5">
-        <CommentSection
-          owner={{ kind: "page", id: pageId }}
-          workspaceId={pageWorkspaceId ?? workspaceId}
-        />
-      </div>
+      <PageDiscussion pageId={pageId} workspaceId={pageWorkspaceId ?? workspaceId} />
     </div>
+  );
+}
+
+/**
+ * The page's comment thread, kept away until the page has something to discuss.
+ *
+ * A blank page offering a comment box is asking you to talk about nothing. A page counts as
+ * real once it has been written on OR named by hand — either is somebody deciding it exists.
+ * Both are read from the replica rather than from the editor, deliberately: a signal routed
+ * through this component's parent would re-render the editor on the first keystroke and close
+ * whatever toolbar was open. This is a sibling, so its own re-renders cost the editor nothing.
+ *
+ * Emptying a page again leaves its blocks in place, so a thread never disappears out from under
+ * a conversation.
+ */
+function PageDiscussion({ pageId, workspaceId }: { pageId: string; workspaceId: string | null }) {
+  const { data: rows, isLoading } = useQuery<{ title: string; blocks: number }>(
+    `SELECT p.title AS title,
+            (SELECT count(*) FROM blocks WHERE page_id = p.id) AS blocks
+       FROM pages p WHERE p.id = ?`,
+    [pageId],
+  );
+  // An empty array is also what the hook reports while it is still loading.
+  const row = isLoading ? undefined : rows[0];
+  // Written on, or named by hand. Either makes it a page somebody might discuss.
+  const started = row !== undefined && (row.blocks > 0 || !isAutoTitle(row.title));
+
+  return (
+    <CommentSection
+      owner={{ kind: "page", id: pageId }}
+      workspaceId={workspaceId}
+      hideWhenEmpty={!started}
+    />
+  );
+}
+
+/**
+ * When this page was made, and when it was last touched — one quiet line under the title.
+ *
+ * Renders nothing until both reads have settled, rather than flickering a wrong date into
+ * place. "Edited" is dropped when it would only repeat the creation date, which is the common
+ * case for a page written in one sitting.
+ */
+function PageStamps({ pageId }: { pageId: string }) {
+  const { createdAt, editedAt } = usePageStamps(pageId);
+  if (createdAt === null) return null;
+
+  const edited = editedAt !== null && editedAt - createdAt > 60_000;
+
+  return (
+    <p data-testid="page-stamps" className="-mt-2 mb-4 text-xs text-subtle">
+      <span title={exactTime(createdAt)}>Created {shortDate(createdAt)}</span>
+      {edited ? (
+        <>
+          <span aria-hidden> · </span>
+          <span title={exactTime(editedAt)}>Edited {timeAgo(editedAt)}</span>
+        </>
+      ) : null}
+    </p>
   );
 }
 
@@ -150,8 +208,17 @@ function PageTitle({ pageId, initialTitle }: { pageId: string; initialTitle: str
 
   const commit = useCallback(() => {
     if (timer.current) clearTimeout(timer.current);
-    void renamePage(pageId, latest.current.trim()).then(() => clearDraft(key));
-  }, [pageId, key]);
+    /*
+     * A title that has not changed is not written back. This is not only about saving an
+     * upload: the commit also runs on unmount, and if this editor was hydrated before its
+     * page's row reached the replica it holds an empty string — which it would then save over
+     * a perfectly good name. Two pages both showing as "Untitled" in the sidebar was that,
+     * with the fallback hiding the empty title.
+     */
+    const next = latest.current.trim();
+    if (next === initialTitle.trim()) return;
+    void renamePage(pageId, next).then(() => clearDraft(key));
+  }, [pageId, key, initialTitle]);
 
   useEffect(() => {
     // Replay anything recovered from a session that was torn down mid-edit.
@@ -178,6 +245,16 @@ function PageTitle({ pageId, initialTitle }: { pageId: string; initialTitle: str
     <input
       value={title}
       onChange={(e) => onChange(e.target.value)}
+      /*
+       * An app-chosen name selects itself when you click into it, so the first thing you type
+       * replaces it. It has to be a real value rather than a placeholder — the sidebar has to
+       * call the page something, and three blank pages all called "Untitled" are worse than a
+       * word you have to type over. Selecting it gives you the placeholder's feel with a real
+       * name behind it. A name you chose is left exactly where your cursor landed.
+       */
+      onFocus={(e) => {
+        if (isAutoTitle(e.currentTarget.value)) e.currentTarget.select();
+      }}
       placeholder="Untitled"
       aria-label="Page title"
       data-testid="page-title"

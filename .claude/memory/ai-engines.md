@@ -256,8 +256,9 @@ worse than no scaffold. Revisit when email is real; it needs a per-user timezone
   at 10pm" work.
 - **Settings are per device**, matching the notifications toggle, which is deliberately
   per-device too. The thing being configured is what THIS machine does at 9pm.
-- **The control lives on `/recap`**, not in a settings dialog: there is no user-settings panel,
-  and that page is where someone thinks "I'd like this every evening".
+- **The control lives on `/recap`**, not in a settings dialog. Personalization (2026-09-16) is
+  about how the app LOOKS; this is where someone thinks "I'd like this every evening", so the
+  setting sits where the thought is. Moving it would only make it harder to find.
 - **The row shows the whole chain and offers the missing link.** Three things must be true
   before anything arrives — schedule on, browser granted, TendTo's own switch on — plus a
   fourth for the prose (an engine). Whichever is missing is offered as a button, not described.

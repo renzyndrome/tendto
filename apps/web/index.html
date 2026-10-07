@@ -21,10 +21,11 @@
     <meta name="apple-mobile-web-app-title" content="TendTo" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <script>
-      // Apply the stored theme BEFORE first paint, so a dark-mode user never sees a white
-      // flash. Deliberately inline + blocking and duplicated from src/stores/theme.ts — the
-      // module bundle loads too late to prevent the flash. Keep the storage key
-      // ("tendto:theme") and the "dark" class in sync with that store.
+      // Apply the stored appearance BEFORE first paint, so nobody sees a white flash or a
+      // paragraph reflowing under them. Deliberately inline + blocking and duplicated from
+      // src/stores/theme.ts and src/lib/personalization.ts — the module bundle loads too late
+      // to prevent either. Keep the two storage keys, the "dark" class and the two CSS
+      // variables in sync with those files.
       (function () {
         try {
           var mode = localStorage.getItem("tendto:theme") || "system";
@@ -34,6 +35,23 @@
           document.documentElement.classList.toggle("dark", dark);
         } catch (e) {
           // Storage blocked — fall through to the light default.
+        }
+        try {
+          var stacks = {
+            inter:
+              'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+            sans: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+            serif: 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
+            mono: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+          };
+          var saved = JSON.parse(localStorage.getItem("tendto:personalization") || "{}");
+          var root = document.documentElement;
+          if (stacks[saved.font]) root.style.setProperty("--tendto-font", stacks[saved.font]);
+          if (typeof saved.size === "number") {
+            root.style.setProperty("--tendto-font-size", saved.size + "px");
+          }
+        } catch (e) {
+          // Storage blocked or the value is nonsense — the CSS fallbacks are the old look.
         }
       })();
     </script>
