@@ -31,10 +31,10 @@ export function CommentItem({ row, workspaceId, currentUserId, canModerate }: Co
         <span className="text-xs font-medium text-fg">{row.author_label}</span>
         {/* authored_at, not created_at: the latter is stamped by the server on upload, so an
             offline comment would claim to have been written the moment it reconnected. */}
-        <span className="text-[11px] text-subtle" title={exactTime(row.authored_at)}>
+        <span className="text-[0.6875rem] text-subtle" title={exactTime(row.authored_at)}>
           {timeAgo(row.authored_at)}
         </span>
-        {isEdited(row) ? <span className="text-[11px] text-subtle">(edited)</span> : null}
+        {isEdited(row) ? <span className="text-[0.6875rem] text-subtle">(edited)</span> : null}
 
         {/* Affordances stay out of the way until you look at the comment. */}
         <span className="ml-auto flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
@@ -43,7 +43,7 @@ export function CommentItem({ row, workspaceId, currentUserId, canModerate }: Co
               type="button"
               onClick={() => setEditing(true)}
               data-testid="comment-edit"
-              className="rounded px-1.5 py-0.5 text-[11px] text-subtle hover:text-fg"
+              className="rounded px-1.5 py-0.5 text-[0.6875rem] text-subtle hover:text-fg"
             >
               Edit
             </button>
@@ -56,7 +56,7 @@ export function CommentItem({ row, workspaceId, currentUserId, canModerate }: Co
                 void deleteComment(row.id);
               }}
               data-testid="comment-delete"
-              className="rounded px-1.5 py-0.5 text-[11px] text-subtle hover:text-danger"
+              className="rounded px-1.5 py-0.5 text-[0.6875rem] text-subtle hover:text-danger"
             >
               Delete
             </button>

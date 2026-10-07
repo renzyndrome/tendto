@@ -114,7 +114,7 @@ export function CalendarView() {
               data-testid={`cal-day-${key}`}
               onClick={() => openDay(key)}
               className={
-                "min-h-[92px] cursor-pointer border-b border-r border-line p-1 hover:bg-hover/40 " +
+                "min-h-[5.75rem] cursor-pointer border-b border-r border-line p-1 hover:bg-hover/40 " +
                 (inMonth ? "bg-app" : "bg-surface/40")
               }
             >
@@ -148,7 +148,7 @@ export function CalendarView() {
                   />
                 ))}
                 {dayItems.length > 3 ? (
-                  <span className="block px-1 text-[11px] text-subtle underline-offset-2 hover:underline">
+                  <span className="block px-1 text-[0.6875rem] text-subtle underline-offset-2 hover:underline">
                     +{dayItems.length - 3} more
                   </span>
                 ) : null}
@@ -179,14 +179,14 @@ function CalendarChip({
       }}
       // A cell is too narrow to always show the workspace, so the tooltip carries it in full.
       title={showWorkspace && item.workspaceName ? `${item.title} — ${item.workspaceName}` : item.title}
-      className="flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] text-muted hover:bg-hover"
+      className="flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[0.6875rem] text-muted hover:bg-hover"
     >
       <span className="h-2 w-2 shrink-0 rounded-full bg-subtle" aria-hidden />
       <span className="truncate">{item.title}</span>
       {showWorkspace && item.workspaceName ? (
         <span
           data-testid="cal-workspace-badge"
-          className="ml-auto max-w-[45%] shrink-0 truncate rounded bg-hover px-1 text-[10px] text-subtle"
+          className="ml-auto max-w-[45%] shrink-0 truncate rounded bg-hover px-1 text-[0.625rem] text-subtle"
         >
           {item.workspaceName}
         </span>

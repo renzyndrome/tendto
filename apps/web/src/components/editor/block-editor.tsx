@@ -482,7 +482,7 @@ export function BlockEditor({
   );
 
   return (
-    <div ref={surfaceRef} className={compact ? "tendto-compact-editor" : undefined}>
+    <div ref={surfaceRef} className={compact ? "tendto-compact-editor" : "tendto-page-editor"}>
       {hasAi ? (
         <SummarizeRow subscribe={subscribeContent} read={readContent} onClick={summarizePage} />
       ) : null}

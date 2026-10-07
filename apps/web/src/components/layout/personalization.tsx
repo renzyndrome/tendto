@@ -164,7 +164,11 @@ export function Personalization({ onClose }: PersonalizationProps) {
           <p
             data-testid="pref-sample"
             className="rounded-md border border-line bg-app px-3 py-2 text-fg"
-            style={{ fontFamily: FONT_STACKS[prefs.font], fontSize: `${prefs.size}px` }}
+            style={{
+              fontFamily: FONT_STACKS[prefs.font],
+              // Same rule as the editor in index.css: the chosen size, times the interface scale.
+              fontSize: `calc(${prefs.size}px * var(--tendto-ui-scale, 1))`,
+            }}
           >
             The quick brown fox jumps over the lazy dog.
           </p>

@@ -290,7 +290,7 @@ function TimeGrid({
             <div
               key={hour}
               style={{ height: HOUR_HEIGHT }}
-              className="relative pr-2 text-right text-[11px] text-subtle"
+              className="relative pr-2 text-right text-[0.6875rem] text-subtle"
             >
               {hour > 0 ? <span className="absolute right-2 -top-1.5">{formatHourLabel(hour)}</span> : null}
             </div>
@@ -407,7 +407,7 @@ function DayBlock({
     >
       {/* The rail is what stops a short, full-width block reading as a divider line. */}
       <span className="absolute inset-y-0 left-0 w-1 rounded-l bg-accent" aria-hidden />
-      <span className="shrink-0 tabular-nums text-[11px] text-muted">
+      <span className="shrink-0 tabular-nums text-[0.6875rem] text-muted">
         {minutesToTime(item.minutes)}
       </span>
       <span className="truncate">{item.title}</span>
@@ -453,7 +453,7 @@ function WorkspaceBadge({ item, show }: { item: DayItem; show: boolean }) {
   return (
     <span
       data-testid="day-workspace-badge"
-      className="ml-auto max-w-[40%] shrink-0 truncate rounded bg-hover px-1 text-[10px] text-subtle"
+      className="ml-auto max-w-[40%] shrink-0 truncate rounded bg-hover px-1 text-[0.625rem] text-subtle"
     >
       {item.workspaceName}
     </span>

@@ -146,6 +146,12 @@ class Page(TimestampMixin, Base):
     parent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     title: Mapped[str] = mapped_column(Text, nullable=False, default="")
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # "page" or "folder". A folder is a pages row with no body: it reuses `parent_id` for
+    # nesting, the delete cascade and the sync path instead of a second tree. Nullable with no
+    # CHECK on purpose: a PUT carries every column, so a null or unknown value from some client
+    # must not fail the batch (the upload queue is ordered; a 500 wedges that device). Readers
+    # treat anything but "folder" as a page.
+    kind: Mapped[str | None] = mapped_column(Text, nullable=True, server_default="page")
 
 
 class Block(TimestampMixin, Base):

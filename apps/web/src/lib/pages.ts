@@ -1,12 +1,29 @@
 /**
- * Page mutations — create, rename, and delete (with descendant cascade). Pages nest via
- * `parent_id`; a page is the unit of "a note / a category". All writes go to the local replica;
- * PowerSync uploads them. No network code here.
+ * Page mutations — create, rename, move, and delete (with descendant cascade). Pages nest via
+ * `parent_id`. A folder is a pages row with `kind = 'folder'`: it has no body and only groups
+ * pages, but it shares the tree, the cascade and the sync path. All writes go to the local
+ * replica; PowerSync uploads them. No network code here.
  */
 import { db } from "./powersync/client";
 
 /** The name a page gets before you give it one. */
 export const AUTO_TITLE = "Untitled";
+
+/** What a pages row is. Anything but "folder" (including NULL from older rows) is a page. */
+export type PageKind = "page" | "folder";
+
+/**
+ * SQL predicate for "this pages row is a page, not a folder", for queries on `pages` itself.
+ * NULL is a page: rows synced before migration 0009 carry no kind.
+ */
+export const IS_PAGE_SQL = "coalesce(kind, 'page') <> 'folder'";
+
+/**
+ * The same filter for the FTS mirror, which has no `kind` column. Filtering at query time keeps
+ * the index shape unchanged; a new column would need the virtual table rebuilt on every device.
+ */
+export const NOT_A_FOLDER_ID_SQL =
+  "id NOT IN (SELECT id FROM pages WHERE kind = 'folder')";
 
 /**
  * Is this still the name the app chose, rather than one the user typed?
@@ -55,8 +72,9 @@ export async function createPage(
         "SELECT MAX(position) AS next FROM pages WHERE workspace_id = ?",
         [workspaceId],
       ),
+      // Folder names never hold an auto number, so they are left out of the pick.
       tx.getAll<{ title: string }>(
-        "SELECT title FROM pages WHERE workspace_id = ? AND title LIKE ?",
+        `SELECT title FROM pages WHERE workspace_id = ? AND title LIKE ? AND ${IS_PAGE_SQL}`,
         [workspaceId, `${AUTO_TITLE}%`],
       ),
     ]);
@@ -64,12 +82,90 @@ export async function createPage(
     const title = pickAutoTitle(new Set(titles.map((row) => row.title.trim())));
 
     await tx.execute(
-      `INSERT INTO pages (id, workspace_id, parent_id, title, position, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO pages (id, workspace_id, parent_id, title, kind, position, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'page', ?, ?, ?)`,
       [id, workspaceId, parentId, title, position, now, now],
     );
   });
   return id;
+}
+
+/**
+ * Create a folder (optionally inside `parentId`) with the name typed into the tree. A folder
+ * has no body, so it gets no auto name: the tree only calls this once a name exists.
+ */
+export async function createFolder(
+  workspaceId: string,
+  parentId: string | null,
+  name: string,
+): Promise<string> {
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await db.writeTransaction(async (tx) => {
+    const positions = await tx.getAll<{ next: number | null }>(
+      "SELECT MAX(position) AS next FROM pages WHERE workspace_id = ?",
+      [workspaceId],
+    );
+    const position = (positions[0]?.next ?? -1) + 1;
+    await tx.execute(
+      `INSERT INTO pages (id, workspace_id, parent_id, title, kind, position, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'folder', ?, ?, ?)`,
+      [id, workspaceId, parentId, name, position, now, now],
+    );
+  });
+  return id;
+}
+
+/**
+ * Move a page or folder under `newParentId` (null = top level). It lands last in its new place.
+ *
+ * Refused (returns false) when the target is the row itself or anything inside it: that would
+ * make a loop no path from the top level reaches, and the whole branch would vanish from the
+ * tree. The check reads the replica inside the write transaction, so it sees the same tree the
+ * write lands on.
+ */
+export async function movePage(
+  pageId: string,
+  newParentId: string | null,
+): Promise<boolean> {
+  if (newParentId === pageId) return false;
+  return db.writeTransaction(async (tx) => {
+    const rows = await tx.getAll<{
+      parent_id: string | null;
+      workspace_id: string;
+    }>("SELECT parent_id, workspace_id FROM pages WHERE id = ?", [pageId]);
+    const row = rows[0];
+    if (!row) return false;
+    if ((row.parent_id ?? null) === newParentId) return true; // already there
+
+    // Walk up from the target. Reaching the moved row means the target is inside it.
+    const seen = new Set<string>();
+    let cursor = newParentId;
+    while (cursor !== null && !seen.has(cursor)) {
+      if (cursor === pageId) return false;
+      seen.add(cursor);
+      const up = await tx.getAll<{ parent_id: string | null }>(
+        "SELECT parent_id FROM pages WHERE id = ?",
+        [cursor],
+      );
+      cursor = up[0]?.parent_id ?? null;
+    }
+
+    const positions = await tx.getAll<{ next: number | null }>(
+      "SELECT MAX(position) AS next FROM pages WHERE workspace_id = ?",
+      [row.workspace_id],
+    );
+    await tx.execute(
+      "UPDATE pages SET parent_id = ?, position = ?, updated_at = ? WHERE id = ?",
+      [
+        newParentId,
+        (positions[0]?.next ?? -1) + 1,
+        new Date().toISOString(),
+        pageId,
+      ],
+    );
+    return true;
+  });
 }
 
 export async function renamePage(pageId: string, title: string): Promise<void> {
@@ -103,12 +199,25 @@ export async function deletePageCascade(pageId: string): Promise<void> {
       [current],
     );
     for (const child of children) {
+      // Two devices moving folders into each other at once can leave a loop after
+      // last-write-wins; without this guard the walk would never end.
+      if (toDelete.includes(child.id)) continue;
       toDelete.push(child.id);
       queue.push(child.id);
     }
   }
+  await deletePages(toDelete);
+}
+
+/**
+ * Delete exactly these pages (and folders) and their blocks, in one transaction. The sidebar
+ * passes the rows it SHOWS inside the deleted one, rather than walking `parent_id` here: after a
+ * concurrent-move loop the tree places loop members at the top level, and a raw walk would also
+ * delete rows the confirm never pointed at. Comments are left to the server, as above.
+ */
+export async function deletePages(ids: readonly string[]): Promise<void> {
   await db.writeTransaction(async (tx) => {
-    for (const id of toDelete) {
+    for (const id of ids) {
       await tx.execute("DELETE FROM blocks WHERE page_id = ?", [id]);
       await tx.execute("DELETE FROM pages WHERE id = ?", [id]);
     }

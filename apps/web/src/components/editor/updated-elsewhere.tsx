@@ -17,7 +17,7 @@ export function UpdatedElsewhere({ onReload, variant = "page" }: UpdatedElsewher
       role="status"
       data-testid="updated-elsewhere"
       className={`flex items-center justify-between gap-3 rounded-lg border border-line bg-surface px-3 text-subtle ${
-        variant === "compact" ? "mb-2 py-1.5 text-[11px]" : "mb-3 py-2 text-xs"
+        variant === "compact" ? "mb-2 py-1.5 text-[0.6875rem]" : "mb-3 py-2 text-xs"
       }`}
     >
       <span>Updated on another device.</span>

@@ -7,6 +7,7 @@
  */
 import { parseProperties, type ItemRow } from "./items/mutations";
 import { blockRowToText } from "./blocks/text";
+import { IS_PAGE_SQL, NOT_A_FOLDER_ID_SQL } from "./pages";
 import { db } from "./powersync/client";
 import { isFtsReady, toPrefixQuery } from "./powersync/fts";
 
@@ -81,8 +82,9 @@ export async function searchWorkspace(
 async function ftsSearch(workspaceId: string, match: string): Promise<SearchResults> {
   const [pageRows, itemRows, blockRows] = await Promise.all([
     db.getAll<{ id: string; title: string }>(
-      "SELECT id, title FROM fts_pages WHERE workspace_id = ? AND fts_pages MATCH ? " +
-        "ORDER BY rank LIMIT ?",
+      // Folders are pages rows too, but a result opens a page, and a folder has none.
+      `SELECT id, title FROM fts_pages WHERE workspace_id = ? AND ${NOT_A_FOLDER_ID_SQL} ` +
+        "AND fts_pages MATCH ? ORDER BY rank LIMIT ?",
       [workspaceId, match, PER_GROUP],
     ),
     db.getAll<{ id: string; collection_id: string; title: string }>(
@@ -119,8 +121,8 @@ async function likeSearch(workspaceId: string, trimmed: string): Promise<SearchR
 
   const [pageRows, itemRows, blockRows] = await Promise.all([
     db.getAll<{ id: string; title: string }>(
-      "SELECT id, title FROM pages WHERE workspace_id = ? AND title LIKE ? ESCAPE '\\' " +
-        "ORDER BY updated_at DESC LIMIT ?",
+      `SELECT id, title FROM pages WHERE workspace_id = ? AND ${IS_PAGE_SQL} ` +
+        "AND title LIKE ? ESCAPE '\\' ORDER BY updated_at DESC LIMIT ?",
       [workspaceId, like, PER_GROUP],
     ),
     db.getAll<ItemRow>(

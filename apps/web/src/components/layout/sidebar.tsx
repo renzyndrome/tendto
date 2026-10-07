@@ -1,13 +1,13 @@
 /**
- * Left sidebar: workspace switcher, a nested Pages tree + Collections list, create/delete
- * actions, search/calendar/export, theme toggle, sign-out. Lists are PowerSync reactive
+ * Left sidebar: workspace switcher, the Pages tree (folders and pages, see page-tree.tsx) +
+ * Collections list, create/delete actions, search/calendar/export, theme toggle, sign-out. Lists are PowerSync reactive
  * queries — they re-render instantly on any local or synced change. Creating/deleting a page
  * or collection is a local write; PowerSync uploads it. Creating a WORKSPACE is the exception
  * and goes through the API (see lib/workspaces.ts).
  */
 import { useQuery } from "@powersync/react";
 import { useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { signOut } from "../../lib/auth/client";
 import { clearAuthToken } from "../../lib/auth/token";
@@ -15,7 +15,6 @@ import { clearSessionToken } from "../../lib/auth/session-token";
 import { bootstrapWorkspaces } from "../../lib/bootstrap";
 import { createCollection, deleteCollectionCascade } from "../../lib/collections";
 import { exportWorkspace } from "../../lib/export";
-import { createPage, deletePageCascade } from "../../lib/pages";
 import { isDesktop } from "../../lib/platform";
 import { disconnectAndClearDb } from "../../lib/powersync/client";
 import { useVisibleWorkspaces } from "../../lib/use-workspaces";
@@ -23,6 +22,7 @@ import { createWorkspace } from "../../lib/workspaces";
 import { useUiStore } from "../../stores/ui";
 import { AiSettings } from "./ai-settings";
 import { NotificationToggle } from "./notification-toggle";
+import { PageTree } from "./page-tree";
 import { Personalization } from "./personalization";
 import { WorkspaceSettings } from "./workspace-settings";
 import { WorkspaceSwitcher } from "./workspace-switcher";
@@ -30,12 +30,6 @@ import { WorkspaceSwitcher } from "./workspace-switcher";
 interface CollectionRow {
   id: string;
   name: string;
-}
-
-interface PageRow {
-  id: string;
-  title: string;
-  parent_id: string | null;
 }
 
 export function Sidebar() {
@@ -58,39 +52,10 @@ export function Sidebar() {
   const workspaces = useVisibleWorkspaces();
   const activeWorkspace = workspaces.find((workspace) => workspace.id === workspaceId);
 
-  const { data: pages } = useQuery<PageRow>(
-    "SELECT id, title, parent_id FROM pages WHERE workspace_id = ? ORDER BY position",
-    [workspaceId ?? ""],
-  );
   const { data: collections } = useQuery<CollectionRow>(
     "SELECT id, name FROM collections WHERE workspace_id = ? ORDER BY created_at",
     [workspaceId ?? ""],
   );
-
-  // Group pages by parent for the tree (null parent = top level).
-  const childrenByParent = useMemo(() => {
-    const map = new Map<string | null, PageRow[]>();
-    for (const page of pages) {
-      const key = page.parent_id ?? null;
-      const list = map.get(key) ?? [];
-      list.push(page);
-      map.set(key, list);
-    }
-    return map;
-  }, [pages]);
-  const rootPages = childrenByParent.get(null) ?? [];
-
-  async function handleNewPage(parentId: string | null): Promise<void> {
-    if (!workspaceId) return;
-    const id = await createPage(workspaceId, parentId);
-    void navigate({ to: "/p/$pageId", params: { pageId: id } });
-  }
-
-  async function handleDeletePage(pageId: string, title: string): Promise<void> {
-    if (!window.confirm(`Delete "${title || "Untitled"}" and any subpages?`)) return;
-    await deletePageCascade(pageId);
-    void navigate({ to: "/" });
-  }
 
   async function handleNewCollection(): Promise<void> {
     if (!workspaceId) return;
@@ -210,24 +175,7 @@ export function Sidebar() {
           <SidebarButton label="Daily recap" onClick={() => navigate({ to: "/recap" })} />
         </div>
 
-        <SectionHeader label="Pages" newLabel="New page" onNew={() => void handleNewPage(null)} />
-        <div className="mb-4">
-          {rootPages.length === 0 ? (
-            <p className="px-2 py-1.5 text-sm text-subtle">No pages yet</p>
-          ) : (
-            rootPages.map((page) => (
-              <PageNode
-                key={page.id}
-                page={page}
-                childrenByParent={childrenByParent}
-                depth={0}
-                onOpen={(id) => navigate({ to: "/p/$pageId", params: { pageId: id } })}
-                onAddSub={(id) => void handleNewPage(id)}
-                onDelete={(id, title) => void handleDeletePage(id, title)}
-              />
-            ))
-          )}
-        </div>
+        <PageTree workspaceId={workspaceId} />
 
         <SectionHeader
           label="Collections"
@@ -282,81 +230,6 @@ export function Sidebar() {
         </button>
       </div>
     </aside>
-  );
-}
-
-interface PageNodeProps {
-  page: PageRow;
-  childrenByParent: Map<string | null, PageRow[]>;
-  depth: number;
-  onOpen: (id: string) => void;
-  onAddSub: (id: string) => void;
-  onDelete: (id: string, title: string) => void;
-}
-
-function PageNode({ page, childrenByParent, depth, onOpen, onAddSub, onDelete }: PageNodeProps) {
-  const children = childrenByParent.get(page.id) ?? [];
-  const [expanded, setExpanded] = useState(true);
-  const hasChildren = children.length > 0;
-
-  return (
-    <div>
-      <div
-        className="group flex items-center gap-1 rounded-md pr-1 hover:bg-hover"
-        style={{ paddingLeft: depth * 12 }}
-      >
-        {hasChildren ? (
-          <button
-            type="button"
-            onClick={() => setExpanded((e) => !e)}
-            aria-label={expanded ? "Collapse" : "Expand"}
-            className="w-4 shrink-0 text-xs text-subtle"
-          >
-            {expanded ? "▾" : "▸"}
-          </button>
-        ) : (
-          <span className="w-4 shrink-0" aria-hidden />
-        )}
-        <button
-          type="button"
-          onClick={() => onOpen(page.id)}
-          className="flex-1 truncate py-1.5 text-left text-sm text-muted"
-        >
-          {page.title || "Untitled"}
-        </button>
-        <button
-          type="button"
-          onClick={() => onAddSub(page.id)}
-          aria-label="Add subpage"
-          title="Add subpage"
-          className="invisible shrink-0 rounded px-1 text-subtle hover:text-fg group-hover:visible"
-        >
-          +
-        </button>
-        <button
-          type="button"
-          onClick={() => onDelete(page.id, page.title)}
-          aria-label="Delete page"
-          title="Delete page"
-          className="invisible shrink-0 rounded px-1 text-subtle hover:text-danger group-hover:visible"
-        >
-          ×
-        </button>
-      </div>
-      {hasChildren && expanded
-        ? children.map((child) => (
-            <PageNode
-              key={child.id}
-              page={child}
-              childrenByParent={childrenByParent}
-              depth={depth + 1}
-              onOpen={onOpen}
-              onAddSub={onAddSub}
-              onDelete={onDelete}
-            />
-          ))
-        : null}
-    </div>
   );
 }
 

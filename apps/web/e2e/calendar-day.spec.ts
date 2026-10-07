@@ -18,6 +18,17 @@ function yForTime(hour: number, minute = 0): number {
 }
 
 /**
+ * A point a few pixels INSIDE the slot that starts at this time. Aiming at the slot's top line
+ * is a coin toss: the grid can sit at a fractional offset (the rem-based interface scale makes
+ * 0.5rem = 9.6px), pointer coordinates are whole pixels, and 0.4px above the line is the slot
+ * before.
+ */
+const INSIDE = 4;
+function yInSlot(hour: number, minute = 0): number {
+  return yForTime(hour, minute) + INSIDE;
+}
+
+/**
  * Day view — the Google-Calendar-style time grid. Covers the three things that make it useful:
  * getting there from the month grid, plotting a task on a slot, and moving one to another time.
  */
@@ -42,7 +53,7 @@ test.describe("calendar day view", () => {
     await expect(grid).toBeVisible();
 
     // Click the 09:00 slot: the quick-create bubble opens pre-filled with that time.
-    await grid.click({ position: { x: 120, y: yForTime(9) } });
+    await grid.click({ position: { x: 120, y: yInSlot(9) } });
     await expect(page.getByTestId("quick-create-time")).toHaveValue("09:00");
 
     // One collection means there is no choice to make, so the picker stays out of the way.
@@ -73,7 +84,7 @@ test.describe("calendar day view", () => {
     await page.getByTestId(`cal-day-${date}`).click();
 
     const grid = page.getByTestId("day-grid");
-    await grid.click({ position: { x: 120, y: yForTime(9) } });
+    await grid.click({ position: { x: 120, y: yInSlot(9) } });
     await page.getByTestId("quick-create-title").fill(marker);
     await page.getByRole("button", { name: "Save" }).click();
 
@@ -83,7 +94,7 @@ test.describe("calendar day view", () => {
     // Drop it so the block's TOP lands on 13:00 — the drag keeps the grip offset, and the block
     // is half a slot tall, so the pointer sits half a block below where the block starts.
     const half = (30 * PX_PER_MINUTE - 2) / 2;
-    await block.dragTo(grid, { targetPosition: { x: 120, y: yForTime(13) + half } });
+    await block.dragTo(grid, { targetPosition: { x: 120, y: yInSlot(13) + half } });
 
     await expect(block).toContainText("13:00");
 
@@ -109,7 +120,7 @@ test.describe("calendar day view", () => {
     await page.getByTestId(`cal-day-${date}`).click();
 
     const grid = page.getByTestId("day-grid");
-    await grid.click({ position: { x: 120, y: yForTime(9) } });
+    await grid.click({ position: { x: 120, y: yInSlot(9) } });
 
     // Now there is a real choice — send it to the FIRST collection, not the default.
     await page.getByTestId("quick-create-collection").selectOption(first);
@@ -133,7 +144,7 @@ test.describe("calendar day view", () => {
     await page.getByRole("button", { name: "Calendar" }).click();
     await page.getByTestId(`cal-day-${date}`).click();
     const grid = page.getByTestId("day-grid");
-    await grid.click({ position: { x: 120, y: yForTime(9) } });
+    await grid.click({ position: { x: 120, y: yInSlot(9) } });
     await page.getByTestId("quick-create-title").fill(first);
     await page.getByRole("button", { name: "Save" }).click();
     await expect(grid.getByTestId(/^day-item-/).filter({ hasText: first })).toBeVisible();
@@ -153,7 +164,7 @@ test.describe("calendar day view", () => {
     await page.getByRole("button", { name: "Calendar" }).click();
     // By now today's cell holds the first task's chip, so click the date number, not the cell.
     await page.getByTestId(`cal-day-${date}`).getByRole("button", { name: `Open ${date}` }).click();
-    await grid.click({ position: { x: 120, y: yForTime(14) } });
+    await grid.click({ position: { x: 120, y: yInSlot(14) } });
     await page.getByTestId("quick-create-title").fill(second);
     await page.getByRole("button", { name: "Save" }).click();
 

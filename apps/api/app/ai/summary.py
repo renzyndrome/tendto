@@ -174,7 +174,12 @@ async def gather_activity(
         await session.scalars(
             select(Page.title)
             .join(Membership, Membership.workspace_id == Page.workspace_id)
-            .where(Membership.user_id == user_id, *_in_window(Page.updated_at))
+            .where(
+                Membership.user_id == user_id,
+                # A folder is a pages row too, but renaming one is filing, not writing.
+                Page.kind.is_distinct_from("folder"),
+                *_in_window(Page.updated_at),
+            )
             .order_by(Page.updated_at)
             .limit(25)
         )

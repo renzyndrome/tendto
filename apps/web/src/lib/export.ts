@@ -19,6 +19,8 @@ interface PageRow {
   workspace_id: string;
   parent_id: string | null;
   title: string;
+  /** "folder" for a folder; "page" or NULL (rows older than migration 0009) for a page. */
+  kind: string | null;
   position: number;
   created_at: string;
   updated_at: string;
@@ -119,7 +121,8 @@ function buildMarkdown(pages: PageRow[], blocks: BlockRow[]): string {
     blocksByPage.set(block.page_id, list);
   }
 
-  const sections = pages.map((page) => {
+  // A folder has no body; the JSON export keeps it, the Markdown has nothing to print for it.
+  const sections = pages.filter((page) => page.kind !== "folder").map((page) => {
     const pageBlocks = [...(blocksByPage.get(page.id) ?? [])].sort(
       (a, b) => a.position - b.position,
     );

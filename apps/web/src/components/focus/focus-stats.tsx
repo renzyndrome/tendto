@@ -101,7 +101,7 @@ export function FocusStats() {
 function Best({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-line px-2 py-2">
-      <dt className="text-[10px] uppercase tracking-wide text-subtle">{label}</dt>
+      <dt className="text-[0.625rem] uppercase tracking-wide text-subtle">{label}</dt>
       <dd className="mt-0.5 text-sm font-medium tabular-nums text-fg">{value}</dd>
     </div>
   );
@@ -126,8 +126,8 @@ function Heatmap({
   return (
     <div className="mt-6">
       <div className="mb-1.5 flex items-baseline justify-between">
-        <span className="text-[10px] uppercase tracking-wide text-subtle">Last 12 weeks</span>
-        <span className="flex items-center gap-1 text-[10px] text-subtle">
+        <span className="text-[0.625rem] uppercase tracking-wide text-subtle">Last 12 weeks</span>
+        <span className="flex items-center gap-1 text-[0.625rem] text-subtle">
           Less
           {INTENSITY_CLASS.map((cls, i) => (
             <span key={i} className={`h-2.5 w-2.5 rounded-sm ${cls}`} />
@@ -172,7 +172,7 @@ function PeakHours({ hours }: { hours: number[] }) {
 
   return (
     <div className="mt-6">
-      <span className="text-[10px] uppercase tracking-wide text-subtle">Peak hours</span>
+      <span className="text-[0.625rem] uppercase tracking-wide text-subtle">Peak hours</span>
       <div data-testid="focus-peak-hours" className="mt-1.5 flex h-12 items-end gap-px">
         {hours.map((minutes, hour) => (
           <span
@@ -183,7 +183,7 @@ function PeakHours({ hours }: { hours: number[] }) {
           />
         ))}
       </div>
-      <div className="mt-1 flex justify-between text-[10px] text-subtle">
+      <div className="mt-1 flex justify-between text-[0.625rem] text-subtle">
         <span>12a</span>
         <span>6a</span>
         <span>12p</span>
