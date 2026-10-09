@@ -74,13 +74,43 @@ test.describe("interactive AI", () => {
     await expect(page.getByRole("button", { name: "Ask AI" })).toHaveCount(0);
   });
 
+  test("the summary previews as formatted text, beside the page, and can be copied", async ({
+    authedPage: page,
+    context,
+  }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.setViewportSize({ width: 1600, height: 900 });
+    const reply = "- **Main point:** ship it\n- Second point";
+    await stubEngine(page, { available: true, reply });
+    await newPageWithText(page, "Notes worth a summary.");
+
+    await page.getByTestId("summarize-page").click();
+    const result = page.getByTestId("ai-result");
+    await expect(result.locator("strong")).toHaveText("Main point:");
+    await expect(result).not.toContainText("**");
+    await expect(page.getByText("Goes at the top of the page.")).toBeVisible();
+
+    // A sheet on the right on a wide window, so the page it summarizes stays in view.
+    const sheet = await page.getByTestId("ai-panel").locator(":scope > div").boundingBox();
+    if (!sheet) throw new Error("the AI panel has no box");
+    expect(Math.round(sheet.x + sheet.width)).toBe(1600);
+    expect(sheet.x).toBeGreaterThan(800);
+
+    // Copy hands over the Markdown as written, for pasting somewhere else.
+    await page.getByTestId("ai-copy").click();
+    await expect(page.getByTestId("ai-copy")).toHaveText("Copied");
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(reply);
+  });
+
   test("Summarize puts the summary at the top of the page", async ({ authedPage: page }) => {
     await stubEngine(page, { available: true, reply: "- Ship on the 10th" });
     await newPageWithText(page, "The launch slipped to the tenth because onboarding is late.");
 
     await page.getByTestId("summarize-page").click();
     // The page-level button skips the menu — there is nothing to choose.
-    await expect(page.getByTestId("ai-result")).toHaveText("- Ship on the 10th");
+    // Rendered as a list item, the way Keep will insert it, not as a raw "- " line.
+    await expect(page.getByTestId("ai-result")).toContainText("Ship on the 10th");
+    await expect(page.getByTestId("ai-result")).not.toContainText("- Ship");
     await page.getByTestId("ai-keep").click();
 
     await expect(page.getByTestId("ai-panel")).toHaveCount(0);

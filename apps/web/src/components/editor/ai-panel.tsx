@@ -8,11 +8,20 @@
  * Deliberately a modal rather than an inline overlay: the result can be several lines, it needs
  * to be read before it is accepted, and the house already has this dialog shape (item-detail,
  * workspace-settings). An inline box would be prettier and much easier to get wrong.
+ *
+ * On a wide window the modal is a sheet on the right rather than a card over the middle: the
+ * page column sits by the sidebar, so the right side is free, and a summary is easier to judge
+ * with the page it summarizes still in view. The result renders as formatted text (the same
+ * Markdown "Keep" inserts), not as asterisks and dashes.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { streamCompose, type AiTask } from "../../lib/ai/compose";
 import { Spinner } from "../ui/spinner";
+import { MarkdownPreview } from "./markdown-preview";
+
+/** How long "Copied" stays on the Copy button. */
+const COPIED_MS = 1500;
 
 interface AiPanelProps {
   /** The text the task runs on — a selection, or the whole page as markdown. */
@@ -22,6 +31,8 @@ interface AiPanelProps {
   initialTask?: string;
   /** What "Keep" means: replace the selection, or insert a summary at the top. */
   onApply: (text: string) => void;
+  /** Where "Keep" puts the result, shown beside it so nobody has to find out by pressing it. */
+  applyHint: string;
   onClose: () => void;
 }
 
@@ -33,8 +44,27 @@ type Phase =
   | { kind: "done"; task: AiTask; text: string; truncated: boolean }
   | { kind: "error"; task: AiTask; message: string };
 
-export function AiPanel({ source, tasks, initialTask, onApply, onClose }: AiPanelProps) {
+export function AiPanel({
+  source,
+  tasks,
+  initialTask,
+  onApply,
+  applyHint,
+  onClose,
+}: AiPanelProps) {
   const [phase, setPhase] = useState<Phase>({ kind: "choose" });
+  const [copied, setCopied] = useState<"idle" | "copied" | "failed">("idle");
+
+  /** Copy the result as written (Markdown), for pasting somewhere other than this page. */
+  async function copyResult(text: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied("copied");
+    } catch {
+      setCopied("failed"); // no clipboard permission, or not a secure context
+    }
+    setTimeout(() => setCopied("idle"), COPIED_MS);
+  }
 
   // Abort the engine when the panel closes mid-answer. On the CLI engine an abandoned stream
   // is an abandoned subprocess, so this is not merely tidiness.
@@ -68,7 +98,7 @@ export function AiPanel({ source, tasks, initialTask, onApply, onClose }: AiPane
         setPhase({
           kind: "error",
           task,
-          message: error instanceof Error ? error.message : "Something went wrong",
+          message: error instanceof Error ? error.message : "Request failed. Try again.",
         });
       }
     },
@@ -99,13 +129,13 @@ export function AiPanel({ source, tasks, initialTask, onApply, onClose }: AiPane
       aria-label="Ask AI"
       data-testid="ai-panel"
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-[12vh]"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-[12vh] lg:items-stretch lg:justify-end lg:bg-black/20 lg:p-0"
     >
       <div
         onClick={(event) => event.stopPropagation()}
-        className="flex max-h-[70vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-line bg-elevated shadow-xl"
+        className="flex max-h-[70vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-line bg-elevated shadow-xl lg:h-full lg:max-h-none lg:w-[30rem] lg:max-w-[40vw] lg:rounded-none lg:border-y-0 lg:border-r-0"
       >
-        <header className="flex items-center justify-between px-5 pb-2 pt-4">
+        <header className="flex items-center justify-between px-5 pb-3 pt-4 lg:border-b lg:border-line">
           <h2 className="text-xs text-subtle">
             {phase.kind === "choose" ? "Ask AI" : phase.task.label}
           </h2>
@@ -119,7 +149,7 @@ export function AiPanel({ source, tasks, initialTask, onApply, onClose }: AiPane
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4 lg:pt-4">
           {phase.kind === "choose" ? (
             <ul className="flex flex-col">
               {tasks.map((task) => (
@@ -139,15 +169,15 @@ export function AiPanel({ source, tasks, initialTask, onApply, onClose }: AiPane
 
           {phase.kind === "running" ? (
             phase.text ? (
-              <p
-                data-testid="ai-streaming"
-                className="whitespace-pre-wrap break-words text-sm text-fg"
-              >
-                {phase.text}
-                <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-accent align-text-bottom" />
-              </p>
+              <div>
+                <MarkdownPreview text={phase.text} testId="ai-streaming" />
+                <span
+                  aria-hidden
+                  className="mt-1 inline-block h-4 w-1.5 animate-pulse bg-accent align-text-bottom"
+                />
+              </div>
             ) : (
-              <Spinner label="Thinking…" />
+              <Spinner label="Writing…" />
             )
           ) : null}
 
@@ -155,16 +185,9 @@ export function AiPanel({ source, tasks, initialTask, onApply, onClose }: AiPane
             <>
               {phase.truncated ? (
                 // Say so rather than quietly summarizing the first half of a long page.
-                <p className="mb-2 text-xs text-warn">
-                  This page is very long, so only the beginning was read.
-                </p>
+                <p className="mb-3 text-xs text-warn">Long page. Only the beginning was read.</p>
               ) : null}
-              <p
-                data-testid="ai-result"
-                className="whitespace-pre-wrap break-words text-sm text-fg"
-              >
-                {phase.text}
-              </p>
+              <MarkdownPreview text={phase.text} testId="ai-result" />
             </>
           ) : null}
 
@@ -192,9 +215,7 @@ export function AiPanel({ source, tasks, initialTask, onApply, onClose }: AiPane
                       kind: "error",
                       task: phase.task,
                       message:
-                        error instanceof Error
-                          ? `Couldn't apply that: ${error.message}`
-                          : "Couldn't apply that.",
+                        error instanceof Error ? `Not applied: ${error.message}` : "Not applied.",
                     });
                     return;
                   }
@@ -213,6 +234,16 @@ export function AiPanel({ source, tasks, initialTask, onApply, onClose }: AiPane
             >
               Try again
             </button>
+            {phase.kind === "done" ? (
+              <button
+                type="button"
+                data-testid="ai-copy"
+                onClick={() => void copyResult(phase.text)}
+                className="rounded-lg border border-line px-2.5 py-1 text-xs text-muted hover:text-fg"
+              >
+                {copied === "copied" ? "Copied" : copied === "failed" ? "Copy failed" : "Copy"}
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={onClose}
@@ -220,6 +251,9 @@ export function AiPanel({ source, tasks, initialTask, onApply, onClose }: AiPane
             >
               Discard
             </button>
+            {phase.kind === "done" ? (
+              <span className="ml-auto truncate text-xs text-subtle">{applyHint}</span>
+            ) : null}
           </footer>
         ) : null}
       </div>
