@@ -570,6 +570,9 @@ export function BlockEditor({
           tasks={aiRequest.task ? aiTasks : aiTasks.filter((task) => !task.whole_document)}
           initialTask={aiRequest.task}
           onApply={(text) => applyRef.current(text)}
+          // Matches what applyRef does: a page-level task inserts above the first block, a
+          // selection task replaces the selected blocks.
+          applyHint={aiRequest.task ? "Goes at the top of the page." : "Replaces the selection."}
           onClose={() => setAiRequest(null)}
         />
       ) : null}
