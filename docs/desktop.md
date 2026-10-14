@@ -135,13 +135,31 @@ The desktop shell can run AI on **your** machine, using the `claude` or `codex` 
 have installed and signed in. Nothing is sent to the server, the operator pays nothing, and it
 works with no API key.
 
-Sidebar → **AI engine**. The list shows every CLI found on this machine, then the TendTo server
+Sidebar → **Personalization** → **AI** (the same section the web app has). The list shows every CLI found on this machine, then the TendTo server
 (only when the server has an engine of its own), then Off. With nothing chosen, a **verified** CLI
 that is present wins: it is your own subscription, and it is the only option where your text does
 not leave the machine. The setting is per device. Off means off, including the evening recap.
 
 `claude` is verified. `codex` is detected and offered but **never chosen by default**, and you
 have to pick it on purpose. See the containment note below for why that distinction matters.
+
+### Signing `claude` in from the app
+
+**Personalization** → **AI** → **Claude CLI** shows whether `claude` is signed in, and a
+**Sign in to Claude** button. It runs `claude auth login` on this machine, the same as typing it
+in a terminal. The CLI usually opens the browser itself; **Open sign-in page** opens it again,
+and a field takes a code, in case the page ends on one. Leaving the panel cancels a sign-in still
+in progress.
+
+The app opens only the link `claude` printed, and only an https link on a Claude or Anthropic
+host, checked the way a browser reads it (`src-tauri/src/ai_login.rs`). The link is never handed
+to the page: a page that went wrong could otherwise have it authorized with someone else's
+account and sign this machine's `claude` into it. After installing `claude` with the app open, press
+**Check again** so it is found without a restart.
+
+Manual probe, once per release: sign out (`claude auth logout`), open the app from its icon
+rather than a terminal, sign in with the button, and confirm the row reads "Signed in" and a
+Summarize runs on Claude CLI.
 
 ### Containment
 

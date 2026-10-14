@@ -366,4 +366,56 @@ the icon.
 - `take()`/`gate()` in `app/ai/limits.py` never see a local run, and should not — it is the
   user's own subscription. A `Semaphore(1)` in Rust stops a burst of clicks forking several
   agents.
-- AI settings is its OWN sidebar row, not part of Personalization: a capability, not a look.
+- ~~AI settings is its OWN sidebar row, not part of Personalization.~~ Reversed 2026-10-13 at the
+  owner's request: Personalization is now collapsible categories (Appearance, Templates, AI) and
+  the AI section shows on web too. The browser offers the TendTo server or Off; Off is honoured
+  by `describeBrowser` in engine.web.ts (NOT `describeServer`, which the desktop build shares and
+  applies its own choice to). The choice is a draft written on the dialog's Save.
+
+## Users' own API keys, server-side (2026-10-14)
+
+Renzy asked for AI setup in the app ("api key, cli, etc"). The settled rule stands: **no key is
+stored in the browser.** Instead the key is posted once to PUT /ai/settings and kept by the API in
+`user_ai_settings` (migration 0015), encrypted with Fernet under a key derived from
+`AI_KEYS_SECRET` (SHA-256 of any operator string). No secret, no feature: a key stored without it
+would be plain text. GET never returns the key, only `…` + last four.
+
+- **Server-only table.** Not in sync rules, the client schema or TABLE_MODELS: a synced credential
+  stays on every device for good. RLS via LATER_USER_TABLES like the other user tables.
+- **Per-request engine:** `get_request_provider` (app/ai/user_keys.py) wraps `get_provider`, so
+  every AI endpoint runs on the user's key when they have a readable one, else the operator's
+  `.env` engine. Tests still override `get_provider` for the default. Status reports `own-key`.
+- **SSRF is why providers are presets** (OpenAI, Anthropic, OpenRouter, Gemini, fixed URLs). A
+  custom URL is the SERVER calling an address a user chose, so it is off unless the operator
+  sets `AI_ALLOW_CUSTOM_URL` (self-host, e.g. Ollama).
+- A stored key is reused on save only for the same provider. A key that stops decrypting (secret
+  changed) turns AI OFF for that user (FallbackProvider), NOT the operator's engine: they chose
+  their own account, so silently billing the operator and sending their text there was rejected
+  in the security review. Keys must match printable ASCII with no whitespace: a line break in a
+  header makes h11 raise an error quoting the header, which `logger.exception` would log.
+  AI_KEYS_SECRET under 32 characters leaves the feature off (the Fernet key is a bare SHA-256).
+- CLI is still not configurable from a browser: it runs in the desktop app (the user's own) or on
+  the server via AI_CLI (the operator's). The panel says so in one line.
+
+- **Setup rows are closed until clicked** (ai-setup.tsx `SetupRow`): Renzy asked that no key
+  field shows before someone chooses to add one. "Own API key" and "Claude CLI" are two rows; a
+  saved key shows as a one-line summary. The Claude CLI row is a GUIDE, not a login: desktop
+  (install, `claude` + `/login`, "Check again" = `refreshEngine`) or the server's AI_CLI.
+- **No "paste your Claude login token" path on the server.** Considered for "Claude CLI setup"
+  (`claude setup-token` + CLAUDE_CODE_OAUTH_TOKEN per request) and not built: a third-party
+  product offering Claude.ai subscription login is not allowed without Anthropic's approval, and
+  it would store subscription credentials and run an agentic CLI per user on the server. The
+  user's own subscription runs on their own machine, in the desktop app.
+- **Sign in to Claude, from the desktop app** (2026-10-14, `src-tauri/src/ai_login.rs`):
+  runs `claude auth login` (literal argv) and scans its output for the first https link on
+  claude.ai / claude.com / anthropic.com, parsed with `tauri::Url` (WHATWG, so `evil.com\.claude.ai`
+  is evil.com, as the browser sees it) and opened in normal form; `ai_login_open` opens ONLY that
+  stored link, never a URL from the webview, and the webview is never even TOLD the link (security
+  review: a compromised page could get it authorized by another account and paste that code back,
+  swapping the machine-wide `claude` account). The webview's only input is a pasted code, one line, shape-
+  checked, to stdin. Success is read from `claude auth status --json` (`loggedIn`), not the exit
+  code. Trap found in testing: `tokio::process::Child::wait` CLOSES a stdin still inside the
+  child, so the stdin handle must be taken out before watching, or the CLI reads EOF and exits.
+  Also: `ai.rs` now caches only FOUND binaries, so "Check again" after an install works without a
+  restart. Not probed against a real sign-in here (it would have touched Renzy's live login);
+  docs/desktop.md has the manual probe.
