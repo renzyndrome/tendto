@@ -419,3 +419,13 @@ would be plain text. GET never returns the key, only `…` + last four.
   Also: `ai.rs` now caches only FOUND binaries, so "Check again" after an install works without a
   restart. Not probed against a real sign-in here (it would have touched Renzy's live login);
   docs/desktop.md has the manual probe.
+- **All three CLIs, one row each** (2026-10-14, asked for "other CLI tools"): `LOGINS` in
+  ai_login.rs holds per-CLI sign-in argv, status check, link hosts and install page; the webview
+  sends only a `kind`. Codex: `codex login` (link) + `codex login status` (exit 0 = signed in),
+  hosts openai.com/chatgpt.com. Gemini CLI: NO login or status command (official docs), so its
+  Sign in opens `gemini` in a terminal (`LINUX_TERMINALS` probe order; macOS `open -a Terminal`)
+  and its state reads "not reported". Gemini runs headless with `--approval-mode default`,
+  UNVERIFIED like codex. Google moved free/Google One users to Antigravity CLI in June 2026.
+  Events carry `cli` so each row hears only its own run. The browser shows buttons (download the
+  desktop app, install pages), never terminal steps: the owner rejected step lists.
+

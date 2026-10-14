@@ -10,14 +10,14 @@
  *   it hides every AI feature on this device (engine.web.ts honours it).
  *
  * A draft, like the rest of the dialog: the pick is written only on Save. Below it, on both,
- * two setup rows, closed until clicked (ai-setup.tsx): the user's own API key
- * (own-key-form.tsx), which writes at once, being account data rather than a device setting;
- * and the Claude CLI steps for wherever this is running.
+ * setup rows, closed until clicked (setup-row.tsx): the user's own API key (own-key-form.tsx),
+ * which writes at once, being account data rather than a device setting; and the CLI rows
+ * (ai-setup.tsx), one per CLI on desktop, buttons in the browser.
  */
 import { engineLabel, type AiEngineInfo } from "../../lib/ai/compose";
 import { OFF_CHOICE, readEngineChoice, SERVER_CHOICE } from "../../lib/ai/engine-choice";
 import { isDesktop } from "../../lib/platform";
-import { ClaudeCliSetup } from "./ai-setup";
+import { CliSetup } from "./ai-setup";
 import { OwnKeyForm } from "./own-key-form";
 
 interface Option {
@@ -90,7 +90,7 @@ export function AiSection({
       )}
       <div className="space-y-2 border-t border-line pt-3">
         <OwnKeyForm />
-        <ClaudeCliSetup status={status} />
+        <CliSetup status={status} />
       </div>
     </div>
   );

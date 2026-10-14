@@ -106,6 +106,8 @@ services:
         VITE_API_URL: "${API_URL:?public https URL, e.g. https api.tendto.work}"
         VITE_POWERSYNC_URL: "${POWERSYNC_URL:?public https URL, e.g. https sync.tendto.work}"
         VITE_AUTH_URL: ${AUTH_URL}
+        # Where "Get the desktop app" points; empty uses the repository's releases page.
+        VITE_DESKTOP_DOWNLOAD_URL: ${DESKTOP_DOWNLOAD_URL:-}
     networks:
       - dokploy-network
 
