@@ -64,32 +64,42 @@ export interface AiRunResult {
 }
 
 /** Whether this machine's `claude` is installed and signed in. */
+/** Whether one CLI is installed here, and signed in. */
 export interface CliLoginStatus {
   found: boolean;
   loggedIn: boolean;
+  /** False when the CLI cannot say whether it is signed in (`gemini`). */
+  known: boolean;
   email: string | null;
   subscription: string | null;
 }
 
 /**
- * Progress of `claude auth login`: that its sign-in link is ready, then the end. The link itself
- * stays in Rust, which opens it: a page that could read it could have it authorized elsewhere.
+ * Progress of a sign-in: that its link is ready, then the end. `cli` is the kind signing in. The
+ * link itself stays in Rust, which opens it: a page that could read it could have it authorized
+ * elsewhere.
  */
-export type CliLoginEvent = { kind: "link" } | { kind: "done"; ok: boolean; message: string };
+export type CliLoginEvent =
+  { kind: "link"; cli: string } | { kind: "done"; cli: string; ok: boolean; message: string };
 
 /**
- * Signing the user's own `claude` in from the app (src-tauri/src/ai_login.rs). Desktop only: a
- * browser has no CLI, and the server's is one account for everyone.
+ * Signing the user's own CLI in from the app (src-tauri/src/ai_login.rs). Desktop only: a browser
+ * has no CLI, and the server's is one account for everyone. Every call names a CLI by its kind
+ * ("claude-cli", "codex-cli", "gemini-cli"); Rust holds every command and address.
  */
 export interface CliLogin {
-  status(): Promise<CliLoginStatus>;
-  /** Start `claude auth login`. Resolves once it is running, with a function that stops listening. */
-  start(onEvent: (event: CliLoginEvent) => void): Promise<() => void>;
+  status(kind: string): Promise<CliLoginStatus>;
+  /** Start a sign-in that prints a link. Resolves once running, with a function that stops listening. */
+  start(kind: string, onEvent: (event: CliLoginEvent) => void): Promise<() => void>;
   /** Open the link the CLI printed, in the system browser. Rust opens only that link. */
   openLink(): Promise<void>;
   /** Hand the CLI a code the sign-in page showed. */
   submitCode(code: string): Promise<void>;
   cancel(): Promise<void>;
+  /** Open a CLI that signs in only through its own screen in a terminal window. */
+  openTerminal(kind: string): Promise<void>;
+  /** Open the CLI's install guide in the system browser. */
+  openInstallPage(kind: string): Promise<void>;
 }
 
 export interface AiEngine {

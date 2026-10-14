@@ -23,6 +23,7 @@ export type { AiEngineInfo, LocalEngine } from "./engine-contract";
 const ENGINE_LABELS: Record<string, string> = {
   "claude-cli": "Claude CLI",
   "codex-cli": "Codex CLI",
+  "gemini-cli": "Gemini CLI",
   api: "Server API key",
   "own-key": "Own API key",
   offline: "no AI engine",

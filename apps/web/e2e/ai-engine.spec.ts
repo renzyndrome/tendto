@@ -134,16 +134,25 @@ test.describe("AI engine", () => {
     await expect(summary).toHaveCount(0);
   });
 
-  test("the Claude CLI row explains where the CLI can run", async ({ authedPage: page }) => {
+  test("in a browser the CLI row offers buttons: the desktop app and each install page", async ({
+    authedPage: page,
+  }) => {
     await page.getByRole("button", { name: "Personalization" }).click();
     await page.getByTestId("pref-section-ai").click();
-    const cli = page.getByTestId("claude-cli");
-    await expect(cli.getByText("npm install -g @anthropic-ai/claude-code")).toHaveCount(0);
+    const cli = page.getByTestId("cli-tools");
+    const download = cli.getByRole("link", { name: "Get the desktop app" });
+    await expect(download).toHaveCount(0);
 
-    await cli.getByTestId("claude-cli-toggle").click();
-    // A browser cannot spawn it: the desktop app, or the server's .env.
-    await expect(cli.getByText("npm install -g @anthropic-ai/claude-code")).toBeVisible();
-    await expect(cli.getByText("AI_CLI=claude")).toBeVisible();
+    await cli.getByTestId("cli-tools-toggle").click();
+    await expect(download).toHaveAttribute("href", /^https:\/\//);
+    for (const label of ["Claude Code", "Codex", "Gemini CLI"]) {
+      await expect(cli.getByRole("link", { name: `Install ${label}` })).toHaveAttribute(
+        "href",
+        /^https:\/\//,
+      );
+    }
+    // Buttons, not a numbered list of terminal steps.
+    await expect(cli.locator("ol")).toHaveCount(0);
   });
 
   test("every task carries the prompt a local engine would send", async ({

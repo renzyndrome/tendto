@@ -16,7 +16,7 @@ import {
   saveOwnKey,
   type OwnKeySettings,
 } from "../../lib/ai/own-key";
-import { SetupRow } from "./ai-setup";
+import { SetupRow } from "./setup-row";
 
 type Load = { state: "loading" } | { state: "failed" } | { state: "ready"; data: OwnKeySettings };
 

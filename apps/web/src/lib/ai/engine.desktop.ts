@@ -181,12 +181,12 @@ async function runLocal(
 
 /** `claude auth login`, run by Rust (src-tauri/src/ai_login.rs). */
 const login: CliLogin = {
-  status: () => invoke<CliLoginStatus>("ai_login_status"),
-  async start(onEvent) {
+  status: (kind) => invoke<CliLoginStatus>("ai_login_status", { kind }),
+  async start(kind, onEvent) {
     // Listening first, or the sign-in link can be emitted into nothing.
     const unlisten = await listen<CliLoginEvent>("ai://login", (event) => onEvent(event.payload));
     try {
-      await invoke("ai_login_start");
+      await invoke("ai_login_start", { kind });
     } catch (error) {
       unlisten();
       throw error;
@@ -196,6 +196,8 @@ const login: CliLogin = {
   openLink: () => invoke("ai_login_open"),
   submitCode: (code) => invoke("ai_login_code", { code }),
   cancel: () => invoke("ai_login_cancel"),
+  openTerminal: (kind) => invoke("ai_login_terminal", { kind }),
+  openInstallPage: (kind) => invoke("ai_login_install", { kind }),
 };
 
 export const engine: AiEngine = {
