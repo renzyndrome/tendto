@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures";
+import { clickNewPage } from "./helpers/pages";
 
 // A 1×1 transparent PNG.
 const PNG_B64 =
@@ -12,7 +13,7 @@ const PNG_B64 =
  */
 test.describe("image insert", () => {
   test("adding an image stores it inline (data URL) and persists", async ({ authedPage: page }) => {
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     const editor = page.locator('[contenteditable="true"]').first();
     await expect(editor).toBeVisible({ timeout: 20_000 });
     await editor.click();

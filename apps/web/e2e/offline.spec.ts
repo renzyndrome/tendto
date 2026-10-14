@@ -1,5 +1,6 @@
 import { expect, test } from "./fixtures";
 import { signInAs } from "./helpers/api";
+import { clickNewPage } from "./helpers/pages";
 
 /**
  * Phase 1 — offline-first. Edit while the browser is offline (writes queue in the local replica),
@@ -14,7 +15,7 @@ test.describe("offline", () => {
   }) => {
     const marker = `offline-${Date.now().toString(36)}`;
 
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     const editor = page.locator('[contenteditable="true"]').first();
     await expect(editor).toBeVisible({ timeout: 20_000 });
 

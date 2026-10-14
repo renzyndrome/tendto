@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "./fixtures";
-import { expectNewPageOpened } from "./helpers/pages";
+import { clickNewPage, expectNewPageOpened } from "./helpers/pages";
 
 /**
  * Interactive AI — Summarize a page, and Ask AI on a selection.
@@ -56,7 +56,7 @@ async function stubEngine(page: Page, options: { available: boolean; reply?: str
 }
 
 async function newPageWithText(page: Page, text: string) {
-  await page.getByRole("button", { name: "New page" }).click();
+  await clickNewPage(page);
   await expectNewPageOpened(page);
   await page.locator(".bn-editor").click();
   await page.keyboard.type(text);

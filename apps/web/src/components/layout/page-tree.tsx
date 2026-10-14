@@ -22,6 +22,7 @@ import {
   renamePage,
 } from "../../lib/pages";
 import type { TreeRow } from "../../lib/tree";
+import { useFreshPages } from "../../stores/fresh-pages";
 import { idFromPath, SidebarTree } from "./sidebar-tree";
 import { NewPageIcon } from "./tree-icons";
 
@@ -30,6 +31,7 @@ export function PageTree({ workspaceId }: { workspaceId: string | null }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const { data: session } = useSession();
   const favoriteIds = useFavoriteIds();
+  const markFresh = useFreshPages((state) => state.mark);
   const { data: rows } = useQuery<TreeRow>(
     // created_at breaks position ties (rows moved on two devices at once) the same way everywhere.
     "SELECT id, title, parent_id, kind, position FROM pages WHERE workspace_id = ? ORDER BY created_at",
@@ -54,7 +56,16 @@ export function PageTree({ workspaceId }: { workspaceId: string | null }) {
         rows,
         openId: idFromPath(pathname, "p"),
         open: (id) => void navigate({ to: "/p/$pageId", params: { pageId: id } }),
-        createItem: (parentId) => createPage(workspaceId ?? "", parentId),
+        // A new page is named in the tree first, like a folder, rather than appearing as
+        // "Untitled" to be renamed afterwards.
+        newItemNameLabel: "Page name",
+        createItem: (parentId, name) => createPage(workspaceId ?? "", parentId, name),
+        // Opened straight after it was made: no comment box on this visit (see PageDiscussion).
+        // A page made and left unopened is not marked, so its first real visit shows the thread.
+        openNew: (id) => {
+          markFresh(id);
+          void navigate({ to: "/p/$pageId", params: { pageId: id } });
+        },
         createFolder: (parentId, name) => createFolder(workspaceId ?? "", parentId, name),
         rename: renamePage,
         move: movePage,

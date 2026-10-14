@@ -9,6 +9,7 @@
  * nothing here may reference Tauri.
  */
 import { apiFetch } from "../api/client";
+import { OFF_CHOICE, readEngineChoice } from "./engine-choice";
 import type { AiEngine, AiEngineInfo, AiRunRequest, AiRunResult } from "./engine-contract";
 import { forgetServerStatus, loadServerStatus } from "./server-status";
 
@@ -101,8 +102,22 @@ export async function runOnServer(
   return result;
 }
 
+/**
+ * The browser's engine: the server, unless AI is switched off on this device in
+ * Personalization. Off keeps the server described (`serverAvailable`), so the setting can offer
+ * it back, but reports nothing available, so no AI feature renders.
+ *
+ * Not inside `describeServer`: the desktop build shares that and applies its own choice.
+ */
+async function describeBrowser(): Promise<AiEngineInfo> {
+  const server = await describeServer();
+  return readEngineChoice() === OFF_CHOICE
+    ? { ...server, engine: "offline", available: false }
+    : server;
+}
+
 export const engine: AiEngine = {
-  describe: describeServer,
+  describe: describeBrowser,
   run: runOnServer,
   forget: forgetServerStatus,
 };

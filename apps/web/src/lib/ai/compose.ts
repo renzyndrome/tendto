@@ -23,11 +23,15 @@ export type { AiEngineInfo, LocalEngine } from "./engine-contract";
 const ENGINE_LABELS: Record<string, string> = {
   "claude-cli": "Claude CLI",
   "codex-cli": "Codex CLI",
-  api: "your API key",
+  api: "Server API key",
+  "own-key": "Own API key",
   offline: "no AI engine",
 };
 
 export const engineLabel = (engine: string): string => ENGINE_LABELS[engine] ?? engine;
+
+/** Signing this machine's `claude` in, or null in the browser build (see engine-contract.ts). */
+export const cliLogin = engine.login ?? null;
 
 export interface ComposeResult {
   text: string;

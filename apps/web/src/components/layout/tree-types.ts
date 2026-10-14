@@ -38,8 +38,16 @@ export interface TreeSource {
   /** The page or collection the route has open, highlighted without being clicked. */
   openId: string | null;
   open: (id: string) => void;
+  /**
+   * When set, a new item is named in place before it exists, in a field with this label, the
+   * way a new folder is. Enter on an empty name still creates it, under `createItem`'s own
+   * fallback name. Omitted: "New …" creates the item at once.
+   */
+  newItemNameLabel?: string;
+  /** Open an item just created here. Defaults to `open`. */
+  openNew?: (id: string) => void;
   /** Create an item and return its id; the tree highlights and opens it. */
-  createItem: (parentId: string | null) => Promise<string>;
+  createItem: (parentId: string | null, name?: string) => Promise<string>;
   createFolder: (parentId: string | null, name: string) => Promise<string>;
   rename: (id: string, name: string) => Promise<void>;
   /** Move under a parent, last. */
@@ -53,6 +61,8 @@ export interface TreeSource {
   favoriteIds: ReadonlySet<string>;
   toggleFavorite: (row: TreeRow) => void;
 }
+
+export type DraftKind = "folder" | "item";
 
 /**
  * Where a drag would land. `parentId` is the parent it joins (null = top level). The rest says
@@ -74,8 +84,10 @@ export interface TreeContext {
   selectedId: string | null;
   collapsed: ReadonlySet<string>;
   renamingId: string | null;
-  /** The parent a new folder is being named in; undefined when none is. */
+  /** The parent a new folder or item is being named in; undefined when none is. */
   draftParent: string | null | undefined;
+  /** What the draft row will create: a folder (named first) or an item (`newItemNameLabel`). */
+  draftKind: DraftKind;
   drop: DropHint | undefined;
   draggingId: string | null;
   onToggle: (id: string) => void;

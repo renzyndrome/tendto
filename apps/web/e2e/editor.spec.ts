@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures";
+import { clickNewPage } from "./helpers/pages";
 
 /**
  * Phase 1 — the block editor. Typed content (across multiple blocks) survives a reload from the
@@ -9,7 +10,7 @@ test.describe("editor", () => {
     const line1 = `heading-${Date.now().toString(36)}`;
     const line2 = "second paragraph";
 
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     const editor = page.locator('[contenteditable="true"]').first();
     await expect(editor).toBeVisible({ timeout: 20_000 });
 
@@ -37,7 +38,7 @@ test.describe("editor", () => {
  */
 test.describe("editor — repeated saves", () => {
   test("a second edit to the same block also persists", async ({ authedPage: page }) => {
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     const editor = page.locator('[contenteditable="true"]').first();
     await expect(editor).toBeVisible({ timeout: 20_000 });
 

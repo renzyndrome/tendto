@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures";
+import { clickNewPage } from "./helpers/pages";
 
 /**
  * Workspace creation + switching. Unlike pages/collections, a workspace cannot be written to
@@ -14,7 +15,7 @@ test.describe("workspaces", () => {
   }) => {
     // A page that belongs to the original (bootstrapped) workspace.
     const firstPageTitle = `first-${Date.now().toString(36)}`;
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     await page.getByTestId("page-title").fill(firstPageTitle);
     await expect(page.getByRole("button", { name: firstPageTitle })).toBeVisible();
 
@@ -39,7 +40,7 @@ test.describe("workspaces", () => {
 
     // Give the new workspace its own page.
     const secondPageTitle = `second-${Date.now().toString(36)}`;
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     await page.getByTestId("page-title").fill(secondPageTitle);
     await expect(page.getByRole("button", { name: secondPageTitle })).toBeVisible();
 

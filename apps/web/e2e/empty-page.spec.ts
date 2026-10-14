@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures";
+import { clickNewPage } from "./helpers/pages";
 
 /**
  * A blank page is blank.
@@ -8,7 +9,7 @@ import { expect, test } from "./fixtures";
  */
 test.describe("empty page", () => {
   test("offers no furniture until the page has something on it", async ({ authedPage: page }) => {
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     const editor = page.locator('[contenteditable="true"]').first();
     await expect(editor).toBeVisible({ timeout: 20_000 });
 
@@ -18,9 +19,19 @@ test.describe("empty page", () => {
     await editor.click();
     await editor.pressSequentially("a first thought");
 
-    // The comment box arrives with the page, once the first save has landed. (Summarize also
-    // needs an AI engine, which the dev stack may not have — asserted in ai-compose.spec.ts,
-    // which stubs one.)
+    // Not on the visit the page was made in, even once written on: it began a moment ago.
+    await page.waitForTimeout(1500); // the first save lands
+    await expect(page.getByTestId("comment-section")).toHaveCount(0);
+
+    // Leaving and coming back brings the comment box. (Summarize also needs an AI engine, which
+    // the dev stack may not have — asserted in ai-compose.spec.ts, which stubs one.)
+    await clickNewPage(page);
+    await expect(page.getByTestId("page-title")).toHaveValue("Untitled 2", { timeout: 20_000 });
+    await page
+      .getByTestId("page-tree")
+      .getByRole("button", { name: "Untitled", exact: true })
+      .click();
+    await expect(page.getByTestId("page-title")).toHaveValue("Untitled", { timeout: 20_000 });
     await expect(page.getByTestId("comment-section")).toBeVisible({ timeout: 15_000 });
 
     // Emptying it again does not take the thread away mid-conversation…

@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures";
-import { expectNewPageOpened } from "./helpers/pages";
+import { clickNewPage, expectNewPageOpened } from "./helpers/pages";
 
 /**
  * Solo use — managing content: delete a page and delete a collection (both confirm-gated), and
@@ -11,7 +11,7 @@ test.describe("manage pages & collections", () => {
     page.on("dialog", (d) => void d.accept());
     const name = `Del ${Date.now().toString(36)}`;
 
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     await page.getByTestId("page-title").fill(name);
     await page.waitForTimeout(900);
 
@@ -39,7 +39,7 @@ test.describe("manage pages & collections", () => {
     const parent = `Parent ${Date.now().toString(36)}`;
     const child = `Child ${Date.now().toString(36)}`;
 
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     await page.getByTestId("page-title").fill(parent);
     await page.waitForTimeout(900);
 
@@ -48,6 +48,7 @@ test.describe("manage pages & collections", () => {
     // don't rename the parent by mistake.
     await page.getByRole("button", { name: parent }).hover();
     await page.getByRole("button", { name: "Add subpage" }).click();
+    await page.getByRole("textbox", { name: "Page name" }).press("Enter");
     await expectNewPageOpened(page);
     await page.getByTestId("page-title").fill(child);
     await page.waitForTimeout(900);

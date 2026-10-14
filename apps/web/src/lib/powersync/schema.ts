@@ -136,6 +136,20 @@ const favorites = new Table(
   { indexes: { by_target: ["target_id"] } },
 );
 
+// Page templates a user made (migration 0013): USER-private like favorites, so they follow
+// their owner into every workspace. The whole body is one JSON string; see the API model.
+const pageTemplates = new Table({
+  user_id: column.text,
+  name: column.text,
+  content: column.text, // JSON string: the BlockNote document, block ids removed
+  // Set when the row stands in for a built-in template (0014): an edited copy, or with
+  // hidden = 1 a record that it was deleted. NULL for the user's own templates.
+  builtin_id: column.text,
+  hidden: column.integer,
+  created_at: column.text,
+  updated_at: column.text,
+});
+
 export const AppSchema = new Schema({
   workspaces,
   memberships,
@@ -148,6 +162,7 @@ export const AppSchema = new Schema({
   // snake_case while the local const follows the file's camelCase convention.
   focus_sessions: focusSessions,
   favorites,
+  page_templates: pageTemplates,
 });
 
 export type Database = (typeof AppSchema)["types"];

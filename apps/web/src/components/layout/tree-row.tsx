@@ -30,6 +30,9 @@ export function TreeNode({ row, depth, ctx }: { row: TreeRow; depth: number; ctx
   const addLabel = folder ? source.addToFolderLabel : source.addInsideItemLabel;
   const deleteLabel = folder ? "Delete folder" : source.deleteItemLabel;
   const favoriteLabel = favorite ? "Remove from favorites" : "Add to favorites";
+  // A folder is drafted first among the children (where folders sort), an item last (where a
+  // new one lands). An item with no children yet still shows its draft: that is a new subpage.
+  const draftHere = ctx.draftParent === row.id ? ctx.draftKind : undefined;
 
   return (
     <div data-testid="tree-node" data-id={row.id}>
@@ -134,30 +137,36 @@ export function TreeNode({ row, depth, ctx }: { row: TreeRow; depth: number; ctx
         </button>
       </div>
 
-      {expandable && expanded ? (
-        <>
-          {ctx.draftParent === row.id ? <DraftFolderRow ctx={ctx} depth={depth + 1} /> : null}
-          {children.map((child) => (
+      {draftHere === "folder" ? <DraftRow ctx={ctx} depth={depth + 1} /> : null}
+      {expandable && expanded
+        ? children.map((child) => (
             <TreeNode key={child.id} row={child} depth={depth + 1} ctx={ctx} />
-          ))}
-        </>
-      ) : null}
+          ))
+        : null}
+      {draftHere === "item" ? <DraftRow ctx={ctx} depth={depth + 1} /> : null}
     </div>
   );
 }
 
-/** The row a new folder is named in, before it exists. Empty name or Escape: nothing created. */
-export function DraftFolderRow({ ctx, depth }: { ctx: TreeContext; depth: number }) {
+/**
+ * The row a new folder or item is named in, before it exists. Escape: nothing created. An empty
+ * folder name creates nothing either; an empty item name on Enter takes the item's auto name,
+ * which the placeholder shows.
+ */
+export function DraftRow({ ctx, depth }: { ctx: TreeContext; depth: number }) {
+  const folder = ctx.draftKind === "folder";
   return (
     <div
+      data-testid="tree-draft"
       className="flex items-center gap-1 pr-1"
       style={{ paddingLeft: `${depth * INDENT_REM}rem` }}
     >
       <span className="w-4 shrink-0" aria-hidden />
-      <FolderIcon className="h-4 w-4 shrink-0 text-subtle" />
+      {folder ? <FolderIcon className="h-4 w-4 shrink-0 text-subtle" /> : null}
       <NameInput
         initial=""
-        label="Folder name"
+        label={folder ? "Folder name" : (ctx.source.newItemNameLabel ?? "Name")}
+        placeholder={folder ? undefined : ctx.source.untitled}
         maxLength={ctx.source.maxNameLength}
         onCommit={ctx.onCommitDraft}
         onCancel={ctx.onCancelDraft}
@@ -173,12 +182,14 @@ export function DraftFolderRow({ ctx, depth }: { ctx: TreeContext; depth: number
 function NameInput({
   initial,
   label,
+  placeholder,
   maxLength,
   onCommit,
   onCancel,
 }: {
   initial: string;
   label: string;
+  placeholder?: string;
   maxLength?: number;
   onCommit: (value: string, byKey: boolean) => void;
   onCancel: () => void;
@@ -199,6 +210,7 @@ function NameInput({
       autoFocus
       value={value}
       aria-label={label}
+      placeholder={placeholder}
       maxLength={maxLength}
       onChange={(event) => setValue(event.target.value)}
       onFocus={(event) => event.currentTarget.select()}
@@ -214,7 +226,7 @@ function NameInput({
         }
       }}
       onBlur={() => settle(true, false)}
-      className="my-0.5 min-w-0 flex-1 rounded border border-line bg-app px-1.5 py-1 text-sm text-fg outline-none focus:border-muted"
+      className="my-0.5 min-w-0 flex-1 rounded border border-line bg-app px-1.5 py-1 text-sm text-fg outline-none placeholder:text-subtle focus:border-muted"
     />
   );
 }

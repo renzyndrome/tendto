@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures";
+import { clickNewPage } from "./helpers/pages";
 
 /**
  * Pasting formatted content (from a webpage, doc, or another editor) must keep its formatting
@@ -21,7 +22,7 @@ test.describe("paste formatting", () => {
   test.use({ permissions: ["clipboard-read", "clipboard-write"] });
 
   test("rich text keeps its formatting through a reload", async ({ authedPage: page }) => {
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     await page.locator(".bn-editor").click();
 
     await page.evaluate(async (html) => {
@@ -58,7 +59,7 @@ test.describe("paste formatting", () => {
   });
 
   test("plain text paste still works", async ({ authedPage: page }) => {
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     await page.locator(".bn-editor").click();
 
     await page.evaluate(async () => {

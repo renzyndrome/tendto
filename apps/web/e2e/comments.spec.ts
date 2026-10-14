@@ -1,5 +1,6 @@
 import { expect, test } from "./fixtures";
 import { makeUser } from "./helpers/data";
+import { createPageAndRevisit } from "./helpers/pages";
 
 /**
  * Comments on pages and cards, with @mentions.
@@ -49,8 +50,7 @@ test.describe("comments", () => {
   });
 
   test("comment on a page", async ({ authedPage: page }) => {
-    await page.getByRole("button", { name: "New page" }).click();
-    await page.getByTestId("page-title").fill("Launch notes");
+    await createPageAndRevisit(page, "Launch notes");
 
     const section = page.getByTestId("comment-section");
     await expect(section).toBeVisible();
@@ -67,10 +67,9 @@ test.describe("comments", () => {
   });
 
   test("Enter sends, Shift+Enter starts a new line", async ({ authedPage: page }) => {
-    await page.getByRole("button", { name: "New page" }).click();
-    // Naming it is what makes it a page. A blank one has no thread to comment on — see
-    // empty-page.spec.ts.
-    await page.getByTestId("page-title").fill("Keyboard notes");
+    // Named, and opened again: a blank page, or one on the visit it was made in, has no thread
+    // to comment on. See empty-page.spec.ts.
+    await createPageAndRevisit(page, "Keyboard notes");
     const box = page.getByTestId("comment-section").getByRole("textbox");
 
     await box.fill("first line");
@@ -114,8 +113,7 @@ test.describe("comments", () => {
     authedPage: page,
     user,
   }) => {
-    await page.getByRole("button", { name: "New page" }).click();
-    await page.getByTestId("page-title").fill("Mention notes");
+    await createPageAndRevisit(page, "Mention notes");
     const box = page.getByTestId("comment-section").getByRole("textbox");
 
     await box.click();
@@ -142,8 +140,7 @@ test.describe("comments", () => {
   }) => {
     // Owner writes a comment on a page that the teammate will be invited to.
     const pageTitle = `thread-${Date.now().toString(36)}`;
-    await page.getByRole("button", { name: "New page" }).click();
-    await page.getByTestId("page-title").fill(pageTitle);
+    await createPageAndRevisit(page, pageTitle);
     await expect(page.getByRole("button", { name: pageTitle })).toBeVisible();
 
     const section = page.getByTestId("comment-section");
@@ -199,8 +196,7 @@ test.describe("comments", () => {
 
   test("a viewer reads the thread but has no composer", async ({ authedPage: page, browser }) => {
     const pageTitle = `readonly-${Date.now().toString(36)}`;
-    await page.getByRole("button", { name: "New page" }).click();
-    await page.getByTestId("page-title").fill(pageTitle);
+    await createPageAndRevisit(page, pageTitle);
     await expect(page.getByRole("button", { name: pageTitle })).toBeVisible();
 
     const section = page.getByTestId("comment-section");

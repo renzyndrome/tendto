@@ -63,6 +63,35 @@ export interface AiRunResult {
   truncated: boolean;
 }
 
+/** Whether this machine's `claude` is installed and signed in. */
+export interface CliLoginStatus {
+  found: boolean;
+  loggedIn: boolean;
+  email: string | null;
+  subscription: string | null;
+}
+
+/**
+ * Progress of `claude auth login`: that its sign-in link is ready, then the end. The link itself
+ * stays in Rust, which opens it: a page that could read it could have it authorized elsewhere.
+ */
+export type CliLoginEvent = { kind: "link" } | { kind: "done"; ok: boolean; message: string };
+
+/**
+ * Signing the user's own `claude` in from the app (src-tauri/src/ai_login.rs). Desktop only: a
+ * browser has no CLI, and the server's is one account for everyone.
+ */
+export interface CliLogin {
+  status(): Promise<CliLoginStatus>;
+  /** Start `claude auth login`. Resolves once it is running, with a function that stops listening. */
+  start(onEvent: (event: CliLoginEvent) => void): Promise<() => void>;
+  /** Open the link the CLI printed, in the system browser. Rust opens only that link. */
+  openLink(): Promise<void>;
+  /** Hand the CLI a code the sign-in page showed. */
+  submitCode(code: string): Promise<void>;
+  cancel(): Promise<void>;
+}
+
 export interface AiEngine {
   /** What can run here. Asked once per session; `forget()` drops the answer. */
   describe(): Promise<AiEngineInfo>;
@@ -76,4 +105,7 @@ export interface AiEngine {
 
   /** Forget the cached description, after the engine choice changes. */
   forget(): void;
+
+  /** Sign this machine's `claude` in. Absent in the browser build. */
+  login?: CliLogin;
 }

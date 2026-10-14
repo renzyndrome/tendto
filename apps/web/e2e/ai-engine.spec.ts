@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "./fixtures";
 import { apiGet } from "./helpers/api";
-import { expectNewPageOpened } from "./helpers/pages";
+import { clickNewPage, expectNewPageOpened } from "./helpers/pages";
 
 /**
  * Where AI runs, and what the server hands over so a LOCAL engine can run it.
@@ -9,7 +9,7 @@ import { expectNewPageOpened } from "./helpers/pages";
  * machine (apps/desktop/src-tauri/src/ai.rs). This suite drives the WEB build, so none of that
  * is reachable here. What IS reachable, and what this file covers:
  *
- *   - the browser build offers no engine choice at all, because it has nothing to spawn;
+ *   - the browser chooses in Personalization between the server and Off, and Off hides AI;
  *   - /ai/status carries the real system prompts, which is what makes a local run possible;
  *   - the recap prompt rides on that list without leaking into either menu.
  *
@@ -64,11 +64,86 @@ async function stubStatus(page: Page) {
 }
 
 test.describe("AI engine", () => {
-  test("a browser is offered no engine to choose", async ({ authedPage: page }) => {
-    // The row and the dialog behind it exist only in the desktop build. A browser cannot spawn
-    // a CLI, so a picker here would list one option and change nothing.
+  test("a browser chooses the server or Off in Personalization, and Off hides AI", async ({
+    authedPage: page,
+  }) => {
+    await stubStatus(page);
+    await clickNewPage(page);
+    await expectNewPageOpened(page);
+    await page.locator(".bn-editor").click();
+    await page.keyboard.type("some words to work on");
+    await expect(page.getByTestId("summarize-page")).toBeVisible({ timeout: 15_000 });
+
+    // No separate row in the sidebar: AI is a section of Personalization.
     await expect(page.getByRole("button", { name: "AI engine" })).toHaveCount(0);
-    await expect(page.getByTestId("ai-settings")).toHaveCount(0);
+    await page.getByRole("button", { name: "Personalization" }).click();
+    await page.getByTestId("pref-section-ai").click();
+    const ai = page.getByTestId("ai-settings");
+    // A browser has no CLI to spawn: the server, or nothing.
+    await expect(ai.getByTestId("ai-engine-server")).toHaveAttribute("aria-pressed", "true");
+    await ai.getByTestId("ai-engine-off").click();
+    await page.getByTestId("pref-save").click();
+
+    await expect(page.getByTestId("summarize-page")).toHaveCount(0);
+
+    // Remembered on this device.
+    await page.reload();
+    await expect(page.locator(".bn-editor")).toContainText("some words to work on", {
+      timeout: 20_000,
+    });
+    await page.waitForTimeout(1000); // the engine status is read after the editor mounts
+    await expect(page.getByTestId("summarize-page")).toHaveCount(0);
+  });
+
+  test("an own API key is kept on the server and shown only by its last four characters", async ({
+    authedPage: page,
+  }) => {
+    // No model is ever called here: the key is fake, and nothing on the page asks the engine.
+    const key = "sk-ant-test-0000000000wxyz";
+    await page.getByRole("button", { name: "Personalization" }).click();
+    await page.getByTestId("pref-section-ai").click();
+    const own = page.getByTestId("own-key");
+    // No field asks for a key until the row is opened.
+    await expect(own.getByLabel("API key")).toHaveCount(0);
+    await own.getByTestId("own-key-toggle").click();
+    await own.getByTestId("own-key-provider-anthropic").click();
+    await own.getByLabel("Model").fill("claude-haiku-5-5");
+    await own.getByLabel("API key").fill(key);
+    await own.getByTestId("own-key-save").click();
+
+    const summary = own.getByTestId("own-key-summary");
+    await expect(summary).toHaveText("Anthropic · claude-haiku-5-5 · key …wxyz");
+    // This user's requests now run on that key.
+    await expect(page.getByTestId("ai-engine-state")).toHaveText("Server engine: Own API key.");
+    // The key itself never comes back.
+    const res = await apiGet(page.request, "/ai/settings");
+    expect(await res.text()).not.toContain(key);
+
+    // Kept on the server, not in this tab.
+    await page.reload();
+    await page.getByRole("button", { name: "Personalization" }).click();
+    await expect(summary).toHaveText("Anthropic · claude-haiku-5-5 · key …wxyz", {
+      timeout: 20_000,
+    });
+
+    // Closed again after the reload: the summary shows, the fields do not.
+    await expect(own.getByLabel("API key")).toHaveCount(0);
+    await own.getByTestId("own-key-toggle").click();
+    await own.getByRole("button", { name: "Remove key" }).click();
+    await expect(own.getByText("Key removed.")).toBeVisible();
+    await expect(summary).toHaveCount(0);
+  });
+
+  test("the Claude CLI row explains where the CLI can run", async ({ authedPage: page }) => {
+    await page.getByRole("button", { name: "Personalization" }).click();
+    await page.getByTestId("pref-section-ai").click();
+    const cli = page.getByTestId("claude-cli");
+    await expect(cli.getByText("npm install -g @anthropic-ai/claude-code")).toHaveCount(0);
+
+    await cli.getByTestId("claude-cli-toggle").click();
+    // A browser cannot spawn it: the desktop app, or the server's .env.
+    await expect(cli.getByText("npm install -g @anthropic-ai/claude-code")).toBeVisible();
+    await expect(cli.getByText("AI_CLI=claude")).toBeVisible();
   });
 
   test("every task carries the prompt a local engine would send", async ({
@@ -104,7 +179,7 @@ test.describe("AI engine", () => {
     // It is on the task list for one reason only: a local engine needs it. A row saying
     // "Daily recap" in a menu for rewriting a highlighted sentence would be nonsense.
     await stubStatus(page);
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     await expectNewPageOpened(page);
     await page.locator(".bn-editor").click();
     await page.keyboard.type("some words to work on");

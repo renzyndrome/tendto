@@ -261,7 +261,7 @@ function RecapBody({ data }: { data: RecapResponse }) {
           the server's .env would send someone somewhere with nothing to change. */}
       {localFailed ? (
         <p data-testid="recap-local-failed" className="pt-1 text-xs text-subtle">
-          Local engine failed. Check the AI engine setting.
+          Local engine failed. Check Personalization, under AI.
         </p>
       ) : null}
     </div>

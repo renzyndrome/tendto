@@ -8,6 +8,7 @@ import { toDateKey } from "../lib/calendar";
 import { isPeriod, type Period } from "../lib/recap";
 import { CollectionView } from "../components/collection/collection-view";
 import { PageEditor } from "../components/editor/page-editor";
+import { TemplateEditor } from "../components/editor/template-editor";
 import { FocusView } from "../components/focus/focus-view";
 import { AppShell } from "../components/layout/app-shell";
 
@@ -31,6 +32,18 @@ const pageRoute = createRoute({
   component: function PageRoute() {
     const { pageId } = pageRoute.useParams();
     return <PageEditor pageId={pageId} />;
+  },
+});
+
+/** A custom page template, opened from Personalization. A route so Back returns from it. */
+const templateRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/t/$templateId",
+  component: function TemplateRoute() {
+    const { templateId } = templateRoute.useParams();
+    // Keyed, so going from one template straight to another never renders the new one with
+    // the old one's name and body for a frame.
+    return <TemplateEditor key={templateId} templateId={templateId} />;
   },
 });
 
@@ -113,6 +126,7 @@ const recapDayRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   pageRoute,
+  templateRoute,
   collectionRoute,
   collectionItemRoute,
   calendarRoute,

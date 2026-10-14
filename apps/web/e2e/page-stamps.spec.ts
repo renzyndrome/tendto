@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures";
+import { clickNewPage } from "./helpers/pages";
 
 /**
  * A page says when it was made and when it was last touched.
@@ -11,7 +12,7 @@ test.describe("page stamps", () => {
   test("shows when a page was created, and notices when its body changes", async ({
     authedPage: page,
   }) => {
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     const editor = page.locator('[contenteditable="true"]').first();
     await expect(editor).toBeVisible({ timeout: 20_000 });
 

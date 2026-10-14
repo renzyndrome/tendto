@@ -1,5 +1,6 @@
 import { expect, test } from "./fixtures";
 import { makeUser } from "./helpers/data";
+import { clickNewPage } from "./helpers/pages";
 
 /**
  * Workspace settings + sharing: rename, invite a real second account, accept the invitation in
@@ -91,7 +92,7 @@ test.describe("sharing", () => {
   }) => {
     // Owner creates a page so there is something to share.
     const shared = `shared-${Date.now().toString(36)}`;
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     await page.getByTestId("page-title").fill(shared);
     await expect(page.getByRole("button", { name: shared })).toBeVisible();
 

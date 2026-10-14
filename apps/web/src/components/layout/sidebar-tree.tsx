@@ -6,7 +6,8 @@
  * - Click a row to highlight it. The open page or collection is highlighted on its own.
  * - "New folder" / "New …" in the header create inside the highlighted folder, beside a
  *   highlighted item, or at the top level when nothing is highlighted (click empty space).
- * - A new folder is named in place; double-click (or F2) renames a folder.
+ * - A new folder is named in place; double-click (or F2) renames a folder. A source with
+ *   `newItemNameLabel` (Pages) names a new item in place too, before it exists.
  * - Drag a row onto a folder to move it in, onto a row's top or bottom edge to reorder, or onto
  *   the header or empty space to move it out.
  * - Right-click (or the ContextMenu key) for Open, Favorites, Rename, Move to… and Delete.
@@ -42,8 +43,8 @@ import {
 import { useHiddenIds, usePendingDelete } from "../../stores/pending-delete";
 import { NewFolderIcon } from "./tree-icons";
 import { TreeMenu } from "./tree-menu";
-import { DraftFolderRow, MAIN_ATTR, TreeNode } from "./tree-row";
-import type { DropHint, TreeContext, TreeSource } from "./tree-types";
+import { DraftRow, MAIN_ATTR, TreeNode } from "./tree-row";
+import type { DraftKind, DropHint, TreeContext, TreeSource } from "./tree-types";
 
 export type { TreeSource } from "./tree-types";
 
@@ -109,6 +110,7 @@ export function SidebarTree({ source }: { source: TreeSource }) {
   );
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draftParent, setDraftParent] = useState<string | null | undefined>(undefined);
+  const [draftKind, setDraftKind] = useState<DraftKind>("folder");
   const [drag, setDrag] = useState<DragState | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
 
@@ -164,18 +166,28 @@ export function SidebarTree({ source }: { source: TreeSource }) {
     requestAnimationFrame(() => find()?.focus());
   }
 
+  /** Open the name field for a new item, or create it at once when the source names none. */
   async function handleNewItem(parentId: string | null): Promise<void> {
     if (!source.enabled) return;
     revealInside(parentId);
+    if (source.newItemNameLabel) {
+      startDraft(parentId, "item");
+      return;
+    }
     const id = await source.createItem(parentId);
     setSelectedId(id);
-    source.open(id);
+    (source.openNew ?? source.open)(id);
   }
 
   function handleStartFolder(parentId: string | null): void {
     if (!source.enabled) return;
     revealInside(parentId);
+    startDraft(parentId, "folder");
+  }
+
+  function startDraft(parentId: string | null, kind: DraftKind): void {
     setRenamingId(null);
+    setDraftKind(kind);
     setDraftParent(parentId);
   }
 
@@ -183,7 +195,19 @@ export function SidebarTree({ source }: { source: TreeSource }) {
     const parentId = draftParent;
     setDraftParent(undefined);
     const trimmed = name.trim();
-    if (!source.enabled || parentId === undefined || !trimmed) return;
+    if (!source.enabled || parentId === undefined) return;
+    if (draftKind === "item") {
+      // Enter on an empty name still makes the item, under its auto name. Focus leaving an
+      // empty field makes nothing: a click elsewhere is not a request for an untitled page.
+      if (!trimmed && !byKey) return;
+      const id = await source.createItem(parentId, trimmed || undefined);
+      setSelectedId(id);
+      // Only after Enter. A name committed by clicking elsewhere leaves that click in charge,
+      // so a click on another row is not overridden by the new item opening a moment later.
+      if (byKey) (source.openNew ?? source.open)(id);
+      return;
+    }
+    if (!trimmed) return;
     const id = await source.createFolder(parentId, trimmed);
     setSelectedId(id);
     if (byKey) focusRow(id);
@@ -435,6 +459,7 @@ export function SidebarTree({ source }: { source: TreeSource }) {
     collapsed,
     renamingId,
     draftParent,
+    draftKind,
     drop: drag?.over,
     draggingId: drag?.id ?? null,
     onToggle: toggle,
@@ -518,12 +543,14 @@ export function SidebarTree({ source }: { source: TreeSource }) {
         onDragOver={handleRootDragOver}
         onDrop={handleRootDrop}
       >
-        {draftParent === null ? <DraftFolderRow ctx={ctx} depth={0} /> : null}
+        {/* A folder is drafted where folders sort (first), an item where it lands (last). */}
+        {draftParent === null && draftKind === "folder" ? <DraftRow ctx={ctx} depth={0} /> : null}
         {roots.length === 0 && draftParent !== null ? (
           <p className="px-2 py-1.5 text-sm text-subtle">{source.emptyText}</p>
         ) : (
           roots.map((row) => <TreeNode key={row.id} row={row} depth={0} ctx={ctx} />)
         )}
+        {draftParent === null && draftKind === "item" ? <DraftRow ctx={ctx} depth={0} /> : null}
       </div>
 
       {menu && menuRow ? (
