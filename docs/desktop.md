@@ -143,23 +143,34 @@ not leave the machine. The setting is per device. Off means off, including the e
 `claude` is verified. `codex` is detected and offered but **never chosen by default**, and you
 have to pick it on purpose. See the containment note below for why that distinction matters.
 
-### Signing `claude` in from the app
+### Signing a CLI in from the app
 
-**Personalization** → **AI** → **Claude CLI** shows whether `claude` is signed in, and a
-**Sign in to Claude** button. It runs `claude auth login` on this machine, the same as typing it
-in a terminal. The CLI usually opens the browser itself; **Open sign-in page** opens it again,
-and a field takes a code, in case the page ends on one. Leaving the panel cancels a sign-in still
-in progress.
+**Personalization** → **AI** lists **Claude Code**, **Codex** and **Gemini CLI**, one row each,
+with whether it is installed and signed in:
 
-The app opens only the link `claude` printed, and only an https link on a Claude or Anthropic
-host, checked the way a browser reads it (`src-tauri/src/ai_login.rs`). The link is never handed
-to the page: a page that went wrong could otherwise have it authorized with someone else's
-account and sign this machine's `claude` into it. After installing `claude` with the app open, press
-**Check again** so it is found without a restart.
+- Not installed: **Install guide** opens its install page; **Check again** finds it without a
+  restart.
+- Claude Code and Codex: **Sign in** runs `claude auth login` or `codex login` on this machine,
+  the same as typing it in a terminal. The CLI usually opens the browser itself; **Open sign-in
+  page** opens it again, and a field takes a code in case the page ends on one. Leaving the panel
+  cancels a sign-in still in progress.
+- Gemini CLI has no sign-in command and does not report whether it is signed in, so **Sign in**
+  opens `gemini` in a terminal, where it signs in through its own screen. Since June 2026 Google
+  offers Gemini CLI sign-in to paid plans only; others use Antigravity CLI.
+
+The app opens only the link the CLI printed, and only an https link on that CLI's own vendor's
+hosts (Claude or Anthropic for `claude`, OpenAI or ChatGPT for `codex`), checked the way a browser
+reads it (`src-tauri/src/ai_login.rs`). The link is never handed to the page: a page that went
+wrong could otherwise have it authorized with someone else's account and sign this machine's CLI
+into it. Codex and Gemini CLI are offered but never chosen by default (see Containment).
+
+In the browser the same section offers **Get the desktop app** and each CLI's install page
+instead: a browser cannot run a CLI. `VITE_DESKTOP_DOWNLOAD_URL` sets where the download button
+points (this repository's releases when empty).
 
 Manual probe, once per release: sign out (`claude auth logout`), open the app from its icon
 rather than a terminal, sign in with the button, and confirm the row reads "Signed in" and a
-Summarize runs on Claude CLI.
+Summarize runs on Claude CLI. With `codex` installed, the same for **Codex** (`codex logout`).
 
 ### Containment
 
