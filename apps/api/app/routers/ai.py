@@ -23,6 +23,7 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import NamedTuple
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,8 +38,9 @@ from app.ai.compose import (
     wrap_user_text,
 )
 from app.ai.limits import gate, take
-from app.ai.provider import ChatProvider, StreamingChatProvider, get_provider
+from app.ai.provider import ChatProvider, StreamingChatProvider
 from app.ai.summary import DAILY_SUMMARY_SYSTEM, gather_activity, render_activity, summarize
+from app.ai.user_keys import get_request_provider
 from app.auth import CurrentUser, get_current_user
 from app.db import get_session
 from app.schemas.ai import (
@@ -61,7 +63,7 @@ async def daily_summary(
     body: DailySummaryRequest | None = None,
     user: CurrentUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-    provider: ChatProvider = Depends(get_provider),
+    provider: ChatProvider = Depends(get_request_provider),
 ) -> DailySummaryResponse:
     today = (body.today if body else None) or datetime.now(UTC).date()
     if body and (body.start or body.end):
@@ -99,7 +101,7 @@ async def daily_summary(
 @router.get("/status", response_model=EngineStatus)
 async def status(
     user: CurrentUser = Depends(get_current_user),
-    provider: ChatProvider = Depends(get_provider),
+    provider: ChatProvider = Depends(get_request_provider),
 ) -> EngineStatus:
     """Whether interactive AI can work here, and which tasks exist.
 
@@ -113,6 +115,14 @@ async def status(
         tasks=[*(_task_out(task) for task in TASKS.values()), _RECAP_TASK],
         user_text_marker=USER_TEXT_MARKER,
     )
+
+
+def _failure(exc: Exception) -> str:
+    """What the user is told when the engine fails. A rejected key gets its own message: on a
+    user's own key it is the likeliest failure, and the one they can fix themselves."""
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in {401, 403}:
+        return "API key rejected. Check it in Personalization, under AI."
+    return "The AI engine failed."
 
 
 def _task_out(task: Task) -> TaskOut:
@@ -200,7 +210,7 @@ def _prepare(body: ComposeRequest, user: CurrentUser, provider: ChatProvider) ->
 async def compose(
     body: ComposeRequest,
     user: CurrentUser = Depends(get_current_user),
-    provider: ChatProvider = Depends(get_provider),
+    provider: ChatProvider = Depends(get_request_provider),
 ) -> ComposeResponse:
     """Run one curated task over the user's own text, and return the whole result.
 
@@ -218,7 +228,7 @@ async def compose(
         # stderr (host paths, config) and the HTTP provider's carries the upstream URL. Neither
         # belongs in a browser. The detail is still raised into the server log by `from exc`.
         logger.exception("AI compose failed (task=%s, engine=%s)", task.key, engine)
-        raise HTTPException(status_code=502, detail="The AI engine failed.") from exc
+        raise HTTPException(status_code=502, detail=_failure(exc)) from exc
 
     out = clean(result)
     if not out:
@@ -230,7 +240,7 @@ async def compose(
 async def compose_stream(
     body: ComposeRequest,
     user: CurrentUser = Depends(get_current_user),
-    provider: ChatProvider = Depends(get_provider),
+    provider: ChatProvider = Depends(get_request_provider),
 ) -> StreamingResponse:
     """The same task, delivered as it is written.
 
@@ -268,7 +278,7 @@ async def compose_stream(
             logger.exception(
                 "AI stream failed (task=%s, engine=%s)", prepared.task.key, prepared.engine
             )
-            yield frame({"error": "The AI engine failed."})
+            yield frame({"error": _failure(exc)})
             del exc
             return
 

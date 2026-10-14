@@ -86,7 +86,11 @@ ALL_RLS_TABLES: tuple[str, ...] = (
 #: upgrade time, so a later table listed in `_USER_TABLES` would make a fresh database fail
 #: there, before the table exists. Each of these is installed by its own migration through
 #: `user_table_rls()`, and `all_rls_statements()` adds them for the test schema.
-LATER_USER_TABLES: dict[str, str] = {"favorites": "user_id"}
+LATER_USER_TABLES: dict[str, str] = {
+    "favorites": "user_id",
+    "page_templates": "user_id",
+    "user_ai_settings": "user_id",
+}
 
 _CURRENT_USER = f"current_setting('{USER_SETTING}', true)"
 _MEMBER_WORKSPACES = "app_user_workspaces()"

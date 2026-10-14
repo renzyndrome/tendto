@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routers import ai, bootstrap, health, members, presence, sync, workspaces
+from app.routers import ai, ai_keys, bootstrap, health, members, presence, sync, workspaces
 from app.startup_checks import assert_single_worker
 
 
@@ -33,4 +33,5 @@ app.include_router(workspaces.router)
 app.include_router(members.router)
 app.include_router(sync.router)
 app.include_router(ai.router)
+app.include_router(ai_keys.router)
 app.include_router(presence.router)

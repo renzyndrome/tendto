@@ -145,6 +145,26 @@ async def test_favorites_are_private_to_their_owner():
 
 
 @pytest.mark.asyncio
+async def test_page_templates_are_private_to_their_owner():
+    """Someone's own templates are theirs alone, even inside a shared workspace. Installed by
+    their own migration (0013), after the 0008 backstop."""
+    workspace = await seed_membership(user_id=ALICE)
+    await add_membership(user_id=BOB, workspace_id=workspace)
+    async with TestSession() as session:
+        await session.execute(
+            text(
+                "INSERT INTO page_templates (id, user_id, name, content) "
+                "VALUES (:id, :user_id, 'Weekly review', '[]')"
+            ),
+            {"id": uuid4(), "user_id": ALICE},
+        )
+        await session.commit()
+
+    assert len(await as_app_role(ALICE, "SELECT * FROM page_templates")) == 1
+    assert await as_app_role(BOB, "SELECT * FROM page_templates") == []
+
+
+@pytest.mark.asyncio
 async def test_a_member_cannot_write_into_another_workspace():
     """WITH CHECK, not just USING: reading is filtered, and so is smuggling a row in."""
     alice_ws = await seed_membership(user_id=ALICE)

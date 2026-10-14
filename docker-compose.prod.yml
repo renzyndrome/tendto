@@ -91,6 +91,9 @@ services:
       AI_BASE_URL: ${AI_BASE_URL:-}
       AI_API_KEY: ${AI_API_KEY:-}
       AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
+      # Users' own API keys (Personalization > AI). Empty secret keeps the feature off.
+      AI_KEYS_SECRET: ${AI_KEYS_SECRET:-}
+      AI_ALLOW_CUSTOM_URL: ${AI_ALLOW_CUSTOM_URL:-false}
     networks:
       - internal
       - dokploy-network
