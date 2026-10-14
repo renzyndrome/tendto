@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "./fixtures";
+import { clickNewPage } from "./helpers/pages";
 
 /**
  * Theme mode — System, Light or Dark, applied as the `dark` class on <html> (Tailwind's class
@@ -38,7 +39,7 @@ test.describe("theme", () => {
   });
 
   test("dark mode themes the editor, not just the shell", async ({ authedPage: page }) => {
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     await expect(page.getByTestId("page-title")).toBeVisible();
 
     await openPersonalization(page);

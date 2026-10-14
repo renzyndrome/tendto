@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 
 import { expect, test } from "./fixtures";
+import { clickNewPage } from "./helpers/pages";
 
 /**
  * The sidebar trees' working tools: header order, Undo after delete, remembered folders,
@@ -43,7 +44,7 @@ async function newFolder(page: Page, name: string): Promise<void> {
 
 async function newPageTitled(page: Page, title: string): Promise<void> {
   const before = page.url();
-  await page.getByRole("button", { name: "New page" }).click();
+  await clickNewPage(page);
   await expect(page).not.toHaveURL(before);
   const titleBox = page.getByTestId("page-title");
   await expect(titleBox).toHaveValue(/^Untitled/, { timeout: 20_000 });

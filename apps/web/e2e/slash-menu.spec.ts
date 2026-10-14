@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures";
+import { clickNewPage } from "./helpers/pages";
 
 /**
  * Solo use — the "/" slash menu. Typing "/" opens BlockNote's insert menu; picking an item spawns
@@ -8,7 +9,7 @@ test.describe("slash menu", () => {
   test("typing / opens the insert menu and spawns the chosen block", async ({
     authedPage: page,
   }) => {
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     const editor = page.locator('[contenteditable="true"]').first();
     await expect(editor).toBeVisible({ timeout: 20_000 });
     await editor.click();

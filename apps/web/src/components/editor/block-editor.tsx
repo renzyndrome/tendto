@@ -42,7 +42,6 @@ import {
 } from "../../lib/blocks/serialize";
 import { clearDraft, draftKey, onPageHidden, readDraft, writeDraft } from "../../lib/drafts";
 import { db } from "../../lib/powersync/client";
-import type { PageTemplate } from "../../lib/templates";
 import { useUiStore } from "../../stores/ui";
 import { useThemeStore } from "../../stores/theme";
 
@@ -94,6 +93,20 @@ function documentHasContent(blocks: readonly { type?: string; content?: unknown 
     if (block.type !== "paragraph") return true;
     return Array.isArray(block.content) && block.content.length > 0;
   });
+}
+
+/** An empty block, or a field label such as "Date: " that is waiting for its value. */
+function isOpenForTyping(content: unknown): boolean {
+  if (!Array.isArray(content)) return false;
+  const last: unknown = content[content.length - 1];
+  if (last === undefined) return true;
+  return (
+    typeof last === "object" &&
+    last !== null &&
+    "text" in last &&
+    typeof last.text === "string" &&
+    last.text.endsWith(": ")
+  );
 }
 
 /**
@@ -470,22 +483,29 @@ export function BlockEditor({
     setAiRequest({ source: markdown, task: "summarize" });
   }, [editor]);
 
-  /** A template replaces a blank body outright, then puts the caret in its first empty block. */
+  /**
+   * A template replaces a blank body outright, then puts the caret where typing starts: after
+   * its first field label ("Date: ") or in its first empty block, whichever comes first.
+   */
   const applyTemplate = useCallback(
-    (template: PageTemplate) => {
+    (blocks: readonly PartialBlock[]) => {
       // The row hides once there is content; this is the guard that has to hold regardless.
-      if (documentHasContent(editor.document)) return;
+      // An empty custom template has nothing to put in, and `replaceBlocks` with nothing would
+      // only delete the blank block the caret is in.
+      if (documentHasContent(editor.document) || blocks.length === 0) return;
       const { insertedBlocks } = editor.replaceBlocks(
         editor.document,
-        structuredClone([...template.blocks]),
+        structuredClone([...blocks]),
       );
       publishContent(true);
       handleChangeRef.current();
-      const firstEmpty = insertedBlocks.find(
-        (block) => Array.isArray(block.content) && block.content.length === 0,
-      );
-      if (firstEmpty) editor.setTextCursorPosition(firstEmpty, "start");
+      const firstOpen = insertedBlocks.find((block) => isOpenForTyping(block.content));
+      if (firstOpen) editor.setTextCursorPosition(firstOpen, "end");
       editor.focus();
+      // A value typed after a bold label ("Date: ") is plain, not bold like the label.
+      if (Array.isArray(firstOpen?.content) && firstOpen.content.length > 0) {
+        editor.removeStyles({ bold: true });
+      }
     },
     [editor, publishContent],
   );

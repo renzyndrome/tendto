@@ -70,3 +70,9 @@ PATH — it builds `better-sqlite3` natively. With nvm, `source "$NVM_DIR/nvm.sh
 prepends `~/.bun/bin`, so a non-login shell hits this every time. Same trap breaks `make desktop`,
 where Tauri shells out to `npm`.
 
+
+## Restarting the API by hand: put nvm's node on PATH (2026-10-13)
+The e2e-stack API runs without `--reload`, so a model or sync.py change needs a restart. A
+restart from a shell without nvm's node on PATH leaves `AI_CLI=claude` broken ("'claude' is
+not on the server's PATH"): every AI call fails while everything else works, so it looks like
+the AI engine is "down". Restart with `PATH=$HOME/.nvm/versions/node/<default>/bin:$PATH`.

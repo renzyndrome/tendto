@@ -92,10 +92,19 @@ everyone. What that means for each client:
 | Client | AI |
 | --- | --- |
 | Desktop app | Runs on each user's own `claude` or `codex` CLI (see `docs/desktop.md`) |
-| Browser and phone | No AI buttons. The recap still shows its facts |
+| Browser and phone | No AI buttons, unless the user saved their own API key. The recap still shows its facts |
 
 Setting `AI_API_KEY` later turns AI on for the browser and phone too. It is read at runtime, so
 that is a restart of the `api` service, not a rebuild.
+
+**Users' own API keys.** Set `AI_KEYS_SECRET` (32+ random characters, `openssl rand -hex 32`)
+and each user can save their own OpenAI, Anthropic, OpenRouter or Gemini key in
+**Personalization → AI**. Their requests then run on their key, and the key is stored encrypted
+in the `user_ai_settings` table, which never syncs to any device. Keep the secret stable:
+changing it makes stored keys unreadable, and AI is off for their owners until they enter them
+again (their text is never sent to the server's own engine instead). Leave
+`AI_ALLOW_CUSTOM_URL` off on a shared server: with it on, a user could make the server call any
+URL, internal ones included.
 
 ## Desktop releases
 
@@ -148,6 +157,52 @@ are the one part only a real phone can confirm.
 - `start_url` and `scope` are `/`; serving the app from a subpath needs both changed in
   `apps/web/vite.config.ts` **and** a rebuild.
 - Chrome caches a failed installability check for a while — reopen in a new tab after fixing.
+
+## Upgrading: page templates, own AI keys, Claude sign-in
+
+One-time steps for the release that adds custom page templates, users' own AI keys and the
+desktop "Sign in to Claude". Order matters: the new web app uploads `page_templates` rows, and
+until migration 0013 exists on the server those uploads fail and wait in each device's queue.
+
+1. **Set the new variables** on the `api` service in Dokploy:
+
+   | Variable | Value |
+   | --- | --- |
+   | `AI_KEYS_SECRET` | `openssl rand -hex 32` (32+ characters). Keep it stable and backed up |
+   | `AI_ALLOW_CUSTOM_URL` | `false` (leave off on a shared server) |
+
+   Without `AI_KEYS_SECRET`, Personalization → AI shows own keys as disabled and nothing else
+   changes. Changing it later turns AI off for every user with a stored key until they enter it
+   again.
+
+2. **Deploy**: push to `main`, as usual.
+
+3. **Migrate**, straight after the deploy finishes (adds `page_templates`, its built-in columns,
+   and `user_ai_settings`):
+
+   ```bash
+   docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
+   ```
+
+   Uploads that failed in between retry on their own and go through once this has run.
+
+4. **Restart PowerSync** so it loads the new sync rule (`page_templates` in `user_private`),
+   then check its log for rule errors:
+
+   ```bash
+   docker compose -f docker-compose.prod.yml restart powersync
+   docker compose -f docker-compose.prod.yml logs --since 2m powersync | grep -i -E "error|invalid"
+   ```
+
+5. **Check** in the web app: Personalization → Templates lists the built-in templates, and
+   Personalization → AI → Own API key is not marked disabled.
+
+6. **Desktop**: "Sign in to Claude" ships with the next desktop release (see below). Before
+   tagging it, run the manual sign-in probe in `docs/desktop.md` once.
+
+`user_ai_settings` holds encrypted keys and never syncs: it is absent from the sync rules on
+purpose. Back up `AI_KEYS_SECRET` with the database backups; a restored database without the
+same secret has unreadable keys.
 
 ## Redeploys & notes
 

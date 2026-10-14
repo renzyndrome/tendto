@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "./fixtures";
-import { expectNewPageOpened } from "./helpers/pages";
+import { clickNewPage, expectNewPageOpened } from "./helpers/pages";
 
 /**
  * Second brain, phase D — asking a question of your own notes.
@@ -81,7 +81,7 @@ async function stubAsk(page: Page, options: { available: boolean; reply?: string
 
 async function newPageWithText(page: Page, title: string, text: string) {
   const before = page.url();
-  await page.getByRole("button", { name: "New page" }).click();
+  await clickNewPage(page);
   await expect.poll(() => page.url(), { timeout: 20_000 }).not.toBe(before);
   await expectNewPageOpened(page);
   await page.getByTestId("page-title").fill(title);

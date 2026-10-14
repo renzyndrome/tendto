@@ -19,10 +19,36 @@ export async function expectNewPageOpened(page: Page): Promise<void> {
   await expect(page.getByTestId("page-title")).toHaveValue(AUTO_TITLE, { timeout: 20_000 });
 }
 
+/**
+ * Click "New page" and press Enter in the name field it opens, leaving the name empty: the page
+ * is made under its auto name and opened. Follow with `expectNewPageOpened` before typing.
+ */
+export async function clickNewPage(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "New page" }).click();
+  const name = page.getByRole("textbox", { name: "Page name" });
+  await expect(name).toBeFocused();
+  await name.press("Enter");
+}
+
 /** Create a page and give it a name. Returns once the sidebar shows it under that name. */
 export async function createNamedPage(page: Page, title: string): Promise<void> {
-  await page.getByRole("button", { name: "New page" }).click();
+  await clickNewPage(page);
   await expectNewPageOpened(page);
   await page.getByTestId("page-title").fill(title);
   await expect(page.getByRole("button", { name: title })).toBeVisible({ timeout: 20_000 });
+}
+
+/**
+ * Make a page under `title` through the name field, then open it again. A page's comment thread
+ * stays out of view on the visit it was made in, so a spec about comments starts from here.
+ */
+export async function createPageAndRevisit(page: Page, title: string): Promise<void> {
+  await page.getByRole("button", { name: "New page" }).click();
+  const name = page.getByRole("textbox", { name: "Page name" });
+  await name.fill(title);
+  await name.press("Enter");
+  await expect(page.getByTestId("page-title")).toHaveValue(title, { timeout: 20_000 });
+  await expect(page.getByTestId("comment-section")).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByTestId("page-title")).toHaveValue(title, { timeout: 20_000 });
 }

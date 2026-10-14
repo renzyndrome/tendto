@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures";
+import { clickNewPage } from "./helpers/pages";
 
 /**
  * Personalization — the font and size of the editor, previewed on the real page.
@@ -7,6 +8,28 @@ import { expect, test } from "./fixtures";
  * there. A setting you were only trying out must not follow you into the next session.
  */
 test.describe("personalization", () => {
+  test("each category collapses, and the open ones are remembered", async ({
+    authedPage: page,
+  }) => {
+    await page.getByRole("button", { name: "Personalization" }).click();
+    const appearance = page.getByTestId("pref-section-appearance");
+    const templates = page.getByTestId("pref-section-templates");
+    await expect(appearance).toHaveAttribute("aria-expanded", "true");
+    await expect(templates).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByTestId("pref-section-ai")).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByTestId("pref-font-serif")).toBeVisible();
+
+    await appearance.click();
+    await expect(page.getByTestId("pref-font-serif")).toHaveCount(0);
+    await templates.click();
+    await expect(page.getByTestId("template-settings")).toBeVisible();
+
+    await page.getByTestId("pref-cancel").click();
+    await page.getByRole("button", { name: "Personalization" }).click();
+    await expect(appearance).toHaveAttribute("aria-expanded", "false");
+    await expect(templates).toHaveAttribute("aria-expanded", "true");
+  });
+
   const editorFont = (page: import("@playwright/test").Page) =>
     page
       .locator(".bn-editor")
@@ -35,7 +58,7 @@ test.describe("personalization", () => {
   test("previews on the open page, and only keeps it if you save", async ({
     authedPage: page,
   }) => {
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     const editor = page.locator('[contenteditable="true"]').first();
     await expect(editor).toBeVisible({ timeout: 20_000 });
     await editor.click();
@@ -77,7 +100,7 @@ test.describe("personalization", () => {
   });
 
   test("Escape closes it without keeping the preview", async ({ authedPage: page }) => {
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     const editor = page.locator('[contenteditable="true"]').first();
     await expect(editor).toBeVisible({ timeout: 20_000 });
     await editor.click();

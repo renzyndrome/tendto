@@ -1,5 +1,6 @@
 import { expect, test } from "./fixtures";
 import { signInAs } from "./helpers/api";
+import { clickNewPage } from "./helpers/pages";
 
 /**
  * Phase 3 — sync hardening. An open editor is hydrated once, so an edit made on another device
@@ -16,7 +17,7 @@ test.describe("updated elsewhere", () => {
     const theirs = `theirs-${Date.now().toString(36)}`;
 
     // Device 1 writes, and STAYS on the page — never reloading is the whole point.
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     const editor = page.locator('[contenteditable="true"]').first();
     await expect(editor).toBeVisible({ timeout: 20_000 });
     await editor.click();
@@ -67,7 +68,7 @@ test.describe("updated elsewhere", () => {
      * machine, because the watching query reports an empty result while it is still loading and
      * that empty document was adopted as the baseline.
      */
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     const editor = page.locator('[contenteditable="true"]').first();
     await expect(editor).toBeVisible({ timeout: 20_000 });
     await editor.click();

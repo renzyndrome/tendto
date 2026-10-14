@@ -1,6 +1,6 @@
 import { expect, test } from "./fixtures";
 import { makeUser } from "./helpers/data";
-import { expectNewPageOpened } from "./helpers/pages";
+import { clickNewPage, expectNewPageOpened } from "./helpers/pages";
 
 /**
  * Presence — "who else is reading this".
@@ -20,7 +20,7 @@ const APPEAR_TIMEOUT = 30_000;
 
 test.describe("presence", () => {
   test("nothing renders when you are alone", async ({ authedPage: page }) => {
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     await page.getByTestId("page-title").fill("Solo");
 
     // Give the loop time to have polled at least once, so this isn't just "too early".
@@ -39,7 +39,7 @@ test.describe("presence", () => {
     browser,
   }) => {
     const shared = `presence-${Date.now().toString(36)}`;
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     await page.getByTestId("page-title").fill(shared);
     await expect(page.getByRole("button", { name: shared })).toBeVisible();
 
@@ -93,7 +93,7 @@ test.describe("presence", () => {
     const mine = `mine-${Date.now().toString(36)}`;
     const theirs = `theirs-${Date.now().toString(36)}`;
     for (const title of [mine, theirs]) {
-      await page.getByRole("button", { name: "New page" }).click();
+      await clickNewPage(page);
       // Wait for the NEW editor to mount before typing. The previous page's title box is still
       // in the DOM for a beat, and `fill` would happily rename that one instead — the same race
       // that bites `.last()` elsewhere in this suite.

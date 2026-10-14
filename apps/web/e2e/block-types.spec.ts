@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures";
+import { clickNewPage } from "./helpers/pages";
 
 /**
  * Solo use — the curated block set. BlockNote's markdown input rules turn "# ", "- ", and "[] "
@@ -8,7 +9,7 @@ test.describe("block types", () => {
   test("markdown input rules create heading, bullet, and checkbox blocks", async ({
     authedPage: page,
   }) => {
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     const editor = page.locator('[contenteditable="true"]').first();
     await expect(editor).toBeVisible({ timeout: 20_000 });
     await editor.click();

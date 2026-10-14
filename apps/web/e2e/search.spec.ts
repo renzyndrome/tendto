@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures";
+import { clickNewPage } from "./helpers/pages";
 
 /**
  * Phase 3 — instant search. A block typed into a page is findable via the command palette, and
@@ -8,7 +9,7 @@ test.describe("search", () => {
   test("finds a block by content and navigates to its page", async ({ authedPage: page }) => {
     const marker = `find-${Date.now().toString(36)}`;
 
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     const editor = page.locator('[contenteditable="true"]').first();
     await expect(editor).toBeVisible({ timeout: 20_000 });
     await editor.click();
@@ -40,7 +41,7 @@ test.describe("search", () => {
     const first = `${stem}alpha`;
     const edited = `${first}omega`;
 
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     const editor = page.locator('[contenteditable="true"]').first();
     await expect(editor).toBeVisible({ timeout: 20_000 });
     await editor.click();

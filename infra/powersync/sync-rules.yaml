@@ -42,3 +42,6 @@ bucket_definitions:
       # Starred pages and collections. Personal: which pages someone starred never reaches a
       # teammate, even though the pages themselves do.
       - SELECT * FROM favorites WHERE user_id = bucket.user_id
+      # Page templates a user made. Personal tools: they follow their owner into every
+      # workspace and never reach a teammate.
+      - SELECT * FROM page_templates WHERE user_id = bucket.user_id

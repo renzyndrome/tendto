@@ -25,6 +25,9 @@ import type {
   AiEngineInfo,
   AiRunRequest,
   AiRunResult,
+  CliLogin,
+  CliLoginEvent,
+  CliLoginStatus,
   LocalEngine,
 } from "./engine-contract";
 import { OFF_CHOICE, readEngineChoice, SERVER_CHOICE } from "./engine-choice";
@@ -65,9 +68,7 @@ async function build(): Promise<AiEngineInfo> {
   // the settings row still lists every CLI found even when the server is the active engine.
   const [server, detection] = await Promise.all([
     describeServer(),
-    invoke<Detection>("ai_detect").catch(
-      (): Detection => ({ engines: [], lookedFor: [] }),
-    ),
+    invoke<Detection>("ai_detect").catch((): Detection => ({ engines: [], lookedFor: [] })),
   ]);
   const found = detection.engines;
   const shared = {
@@ -178,9 +179,29 @@ async function runLocal(
   }
 }
 
+/** `claude auth login`, run by Rust (src-tauri/src/ai_login.rs). */
+const login: CliLogin = {
+  status: () => invoke<CliLoginStatus>("ai_login_status"),
+  async start(onEvent) {
+    // Listening first, or the sign-in link can be emitted into nothing.
+    const unlisten = await listen<CliLoginEvent>("ai://login", (event) => onEvent(event.payload));
+    try {
+      await invoke("ai_login_start");
+    } catch (error) {
+      unlisten();
+      throw error;
+    }
+    return unlisten;
+  },
+  openLink: () => invoke("ai_login_open"),
+  submitCode: (code) => invoke("ai_login_code", { code }),
+  cancel: () => invoke("ai_login_cancel"),
+};
+
 export const engine: AiEngine = {
   describe,
   run,
+  login,
   forget() {
     pending = null;
     forgetServerStatus();

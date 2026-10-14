@@ -53,11 +53,16 @@ function pickAutoTitle(taken: Set<string>): string {
   }
 }
 
-/** Create a page (optionally nested under `parentId`). Returns the new page id. */
+/**
+ * Create a page (optionally nested under `parentId`). Returns the new page id. A `title` typed
+ * into the tree names it; without one it gets the next free auto name.
+ */
 export async function createPage(
   workspaceId: string,
   parentId: string | null = null,
+  title?: string,
 ): Promise<string> {
+  const chosen = title?.trim() ?? "";
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
 
@@ -80,12 +85,12 @@ export async function createPage(
       ),
     ]);
     const position = (positions[0]?.next ?? -1) + 1;
-    const title = pickAutoTitle(new Set(titles.map((row) => row.title.trim())));
+    const name = chosen || pickAutoTitle(new Set(titles.map((row) => row.title.trim())));
 
     await tx.execute(
       `INSERT INTO pages (id, workspace_id, parent_id, title, kind, position, created_at, updated_at)
        VALUES (?, ?, ?, ?, 'page', ?, ?, ?)`,
-      [id, workspaceId, parentId, title, position, now, now],
+      [id, workspaceId, parentId, name, position, now, now],
     );
   });
   return id;

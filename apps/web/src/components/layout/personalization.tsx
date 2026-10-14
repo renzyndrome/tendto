@@ -1,5 +1,6 @@
 /**
- * Personalization — theme, font and size, previewed on the real page behind it.
+ * Personalization — the device's settings, in collapsible categories (pref-section.tsx):
+ * Appearance (theme, font and size, previewed on the real page behind it), Templates, and AI.
  *
  * Anchored to the right edge over a nearly clear backdrop, rather than centred over a dimmed
  * one, for one reason: the thing being changed is the page you are already reading. A centred
@@ -9,9 +10,16 @@
  * click outside all put back exactly what was there — the same bargain the AI panel makes, for
  * the same reason: a setting you were only trying out should not follow you to the next
  * session.
+ *
+ * The AI engine choice is a draft the same way (ai-section.tsx): written on Save, dropped on
+ * Cancel. Templates are the exception (template-settings.tsx): they are synced content, not a
+ * setting, so each template action writes at once and Save and Cancel do not touch them.
  */
+import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
+import { refreshEngine, useEngineStatus } from "../../lib/ai/compose";
+import { readEngineChoice, writeEngineChoice } from "../../lib/ai/engine-choice";
 import {
   applyPersonalization,
   FONT_CHOICES,
@@ -29,12 +37,16 @@ import {
   useThemeStore,
   type ThemeMode,
 } from "../../stores/theme";
+import { AiSection, selectedEngine } from "./ai-section";
+import { PrefSection, useOpenSections } from "./pref-section";
+import { TemplateSettings } from "./template-settings";
 
 interface PersonalizationProps {
   onClose: () => void;
 }
 
 export function Personalization({ onClose }: PersonalizationProps) {
+  const navigate = useNavigate();
   const savedMode = useThemeStore((s) => s.mode);
   const setMode = useThemeStore((s) => s.setMode);
 
@@ -46,6 +58,13 @@ export function Personalization({ onClose }: PersonalizationProps) {
   const [mode, setDraftMode] = useState<ThemeMode>(original.current.mode);
   const [prefs, setPrefs] = useState<Prefs>(original.current.prefs);
   const committed = useRef(false);
+  const [openSections, toggleSection] = useOpenSections();
+
+  // The AI engine: null until a different one is picked here.
+  const engineStatus = useEngineStatus();
+  const storedEngine = useRef(readEngineChoice());
+  const [engineDraft, setEngineDraft] = useState<string | null>(null);
+  const engineChanged = engineDraft !== null && engineDraft !== storedEngine.current;
 
   // Paint each change straight onto the page behind the dialog.
   useEffect(() => {
@@ -76,11 +95,17 @@ export function Personalization({ onClose }: PersonalizationProps) {
   function save(): void {
     writePersonalization(prefs);
     setMode(mode);
+    if (engineChanged) {
+      writeEngineChoice(engineDraft);
+      // Every open surface asks again, or an editor already on screen would keep the old engine.
+      refreshEngine();
+    }
     committed.current = true;
     onClose();
   }
 
   const dirty =
+    engineChanged ||
     mode !== original.current.mode ||
     prefs.font !== original.current.prefs.font ||
     prefs.size !== original.current.prefs.size;
@@ -111,67 +136,96 @@ export function Personalization({ onClose }: PersonalizationProps) {
           </button>
         </header>
 
-        <div className="space-y-5 px-4 py-4">
-          <Field label="Theme">
-            <div className="flex gap-1">
-              {THEME_CYCLE.map((option) => (
-                <Choice
-                  key={option}
-                  selected={mode === option}
-                  testid={`pref-theme-${option}`}
-                  onClick={() => setDraftMode(option)}
-                >
-                  {THEME_LABELS[option]}
-                </Choice>
-              ))}
-            </div>
-          </Field>
-
-          <Field label="Font">
-            <div className="grid grid-cols-2 gap-1">
-              {FONT_CHOICES.map((option) => (
-                <Choice
-                  key={option}
-                  selected={prefs.font === option}
-                  testid={`pref-font-${option}`}
-                  onClick={() => setPrefs((current) => ({ ...current, font: option }))}
-                  // Each option is set in its own face: the name of a typeface tells you far
-                  // less about it than one word of it does.
-                  style={{ fontFamily: FONT_STACKS[option] }}
-                >
-                  {FONT_LABELS[option]}
-                </Choice>
-              ))}
-            </div>
-          </Field>
-
-          <Field label="Size">
-            <div className="flex gap-1">
-              {FONT_SIZES.map((option) => (
-                <Choice
-                  key={option}
-                  selected={prefs.size === option}
-                  testid={`pref-size-${option}`}
-                  onClick={() => setPrefs((current) => ({ ...current, size: option }))}
-                >
-                  {option}
-                </Choice>
-              ))}
-            </div>
-          </Field>
-
-          {/* For when no page is open, so the dialog is never judged against nothing. */}
-          <p
-            data-testid="pref-sample"
-            className="rounded-md border border-line bg-app px-3 py-2 text-fg"
-            style={{
-              fontFamily: FONT_STACKS[prefs.font],
-              // Same rule as the editor in index.css: the chosen size, times the interface scale.
-              fontSize: `calc(${prefs.size}px * var(--tendto-ui-scale, 1))`,
-            }}
+        <div>
+          <PrefSection
+            id="appearance"
+            label="Appearance"
+            open={openSections.has("appearance")}
+            onToggle={toggleSection}
           >
-            The quick brown fox jumps over the lazy dog.
-          </p>
+            <Field label="Theme">
+              <div className="flex gap-1">
+                {THEME_CYCLE.map((option) => (
+                  <Choice
+                    key={option}
+                    selected={mode === option}
+                    testid={`pref-theme-${option}`}
+                    onClick={() => setDraftMode(option)}
+                  >
+                    {THEME_LABELS[option]}
+                  </Choice>
+                ))}
+              </div>
+            </Field>
+
+            <Field label="Font">
+              <div className="grid grid-cols-2 gap-1">
+                {FONT_CHOICES.map((option) => (
+                  <Choice
+                    key={option}
+                    selected={prefs.font === option}
+                    testid={`pref-font-${option}`}
+                    onClick={() => setPrefs((current) => ({ ...current, font: option }))}
+                    // Each option is set in its own face: the name of a typeface tells you far
+                    // less about it than one word of it does.
+                    style={{ fontFamily: FONT_STACKS[option] }}
+                  >
+                    {FONT_LABELS[option]}
+                  </Choice>
+                ))}
+              </div>
+            </Field>
+
+            <Field label="Size">
+              <div className="flex gap-1">
+                {FONT_SIZES.map((option) => (
+                  <Choice
+                    key={option}
+                    selected={prefs.size === option}
+                    testid={`pref-size-${option}`}
+                    onClick={() => setPrefs((current) => ({ ...current, size: option }))}
+                  >
+                    {option}
+                  </Choice>
+                ))}
+              </div>
+            </Field>
+
+            {/* For when no page is open, so the dialog is never judged against nothing. */}
+            <p
+              data-testid="pref-sample"
+              className="rounded-md border border-line bg-app px-3 py-2 text-fg"
+              style={{
+                fontFamily: FONT_STACKS[prefs.font],
+                // Same rule as the editor in index.css: the chosen size, times the interface scale.
+                fontSize: `calc(${prefs.size}px * var(--tendto-ui-scale, 1))`,
+              }}
+            >
+              The quick brown fox jumps over the lazy dog.
+            </p>
+          </PrefSection>
+
+          <PrefSection
+            id="templates"
+            label="Templates"
+            open={openSections.has("templates")}
+            onToggle={toggleSection}
+          >
+            <TemplateSettings
+              onOpen={(templateId) => {
+                void navigate({ to: "/t/$templateId", params: { templateId } });
+                onClose();
+              }}
+            />
+          </PrefSection>
+
+          <PrefSection id="ai" label="AI" open={openSections.has("ai")} onToggle={toggleSection}>
+            <AiSection
+              status={engineStatus}
+              selected={selectedEngine(engineStatus, engineDraft)}
+              onSelect={setEngineDraft}
+            />
+          </PrefSection>
         </div>
 
         <footer className="flex items-center justify-end gap-2 border-t border-line px-4 py-3">

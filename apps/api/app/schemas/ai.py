@@ -114,3 +114,38 @@ class EngineStatus(BaseModel):
     #: is half of the injection defence, so it travels with the prompts rather than being
     #: spelled out a second time in the client.
     user_text_marker: str
+
+
+class AiProviderOut(BaseModel):
+    """A provider a user's own key can be used with."""
+
+    key: str
+    label: str
+    default_model: str
+
+
+class AiKeySettingsOut(BaseModel):
+    """A user's own-key setup, as the settings panel sees it. Never carries the key itself."""
+
+    #: False when the server has no AI_KEYS_SECRET: own keys cannot be stored at all.
+    enabled: bool
+    #: Whether a custom URL is accepted (AI_ALLOW_CUSTOM_URL).
+    custom_allowed: bool
+    providers: list[AiProviderOut]
+    configured: bool
+    provider: str | None = None
+    model: str | None = None
+    #: Set only for a custom provider.
+    base_url: str | None = None
+    #: The stored key's last four characters, e.g. "…a1b2".
+    key_hint: str | None = None
+    #: False when a key is stored but no longer decrypts (the server secret changed).
+    key_readable: bool = True
+
+
+class AiKeySettingsIn(BaseModel):
+    provider: str = Field(min_length=1, max_length=32)
+    model: str = Field(default="", max_length=200)
+    #: Omitted or empty keeps the stored key, so the model can change without retyping it.
+    api_key: str | None = Field(default=None, max_length=500)
+    base_url: str | None = Field(default=None, max_length=500)

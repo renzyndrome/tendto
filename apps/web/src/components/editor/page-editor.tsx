@@ -17,6 +17,7 @@ import { usePageStamps } from "../../lib/page-stamps";
 import { isAutoTitle, renamePage } from "../../lib/pages";
 import { db } from "../../lib/powersync/client";
 import { usePresence } from "../../lib/presence/use-presence";
+import { useFreshPages } from "../../stores/fresh-pages";
 import { useHiddenIds } from "../../stores/pending-delete";
 import { useUiStore } from "../../stores/ui";
 import { CommentSection } from "../comments/comment-section";
@@ -45,6 +46,14 @@ export function PageEditor({ pageId }: { pageId: string }) {
   // A targeted re-hydrate, not `location.reload()`: the rest of the app is already live.
   const [revision, setRevision] = useState(0);
   const reload = useCallback(() => setRevision((n) => n + 1), []);
+
+  // Leaving a page ends its first visit, so coming back to it shows its thread.
+  const visitFresh = useFreshPages((state) => state.visit);
+  const leaveFresh = useFreshPages((state) => state.leave);
+  useEffect(() => {
+    visitFresh(pageId);
+    return () => leaveFresh(pageId);
+  }, [pageId, visitFresh, leaveFresh]);
 
   useEffect(() => {
     let cancelled = false;
@@ -173,6 +182,9 @@ function PageEditorInner({
  *
  * Emptying a page again leaves its blocks in place, so a thread never disappears out from under
  * a conversation.
+ *
+ * Nor does it show on a page's first visit, the one it was made in (stores/fresh-pages.ts):
+ * a page named a moment ago has nothing to discuss yet. Coming back to it brings the thread.
  */
 function PageDiscussion({ pageId, workspaceId }: { pageId: string; workspaceId: string | null }) {
   const { data: rows, isLoading } = useQuery<{
@@ -191,12 +203,14 @@ function PageDiscussion({ pageId, workspaceId }: { pageId: string; workspaceId: 
   // date title was chosen by the app, not by a person, so only writing on it counts.
   const namedByHand = row !== undefined && !isAutoTitle(row.title) && row.journal_date === null;
   const started = row !== undefined && (row.blocks > 0 || namedByHand);
+  const fresh = useFreshPages((state) => state.ids.has(pageId));
 
   return (
     <CommentSection
       owner={{ kind: "page", id: pageId }}
       workspaceId={workspaceId}
-      hideWhenEmpty={!started}
+      // A comment that is already there still shows: hiding only applies to an empty thread.
+      hideWhenEmpty={!started || fresh}
     />
   );
 }

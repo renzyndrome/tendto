@@ -341,3 +341,63 @@ class Favorite(TimestampMixin, Base):
     user_id: Mapped[str] = mapped_column(String(64), nullable=False)
     target_kind: Mapped[str] = mapped_column(String(16), nullable=False)  # page | collection
     target_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+
+
+class PageTemplate(TimestampMixin, Base):
+    """A page template one user made: a name and a whole page body, offered on every blank page.
+
+    USER-owned like Favorite: a template is a person's own tool, not workspace content, so it
+    rides the `user_private` bucket and follows its owner into every workspace. sync.py
+    authorizes it by owner.
+
+    The body is ONE row, not a set of `blocks` rows: a template is only ever read or written
+    whole, it belongs to no page, and `blocks` carries a workspace_id that a template has none
+    of. `content` is the BlockNote document as a JSON string, stored as text exactly as sent,
+    so the upload path needs no parsing for it. Last-write-wins on the whole body is fine for
+    data only its owner edits.
+
+    Text, not String(n), for the name as well: a PUT carries every column, and a value over a
+    length limit fails the batch, which wedges that device's ordered upload queue.
+    """
+
+    __tablename__ = "page_templates"
+    __table_args__ = (Index("ix_page_templates_user", "user_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    # better-auth user id, String(64) with no FK, exactly like favorites.user_id.
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Server defaults too, so a PUT missing either column still inserts rather than failing.
+    name: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    content: Mapped[str] = mapped_column(Text, nullable=False, server_default="[]")
+    # Set when this row stands in for a built-in template (migration 0014): the user's edited
+    # copy of it, or with `hidden` = 1 a record that they deleted it. Built-ins live in client
+    # code, so a deleted one needs a row to stay deleted on every device. Text, no FK, no CHECK:
+    # an unknown id from some client must not fail the batch.
+    builtin_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 0 or 1. Integer, not Boolean: the upload path binds client values raw, and the replica
+    # sends an integer.
+    hidden: Mapped[int | None] = mapped_column(Integer, nullable=True, server_default="0")
+
+
+class UserAiSettings(TimestampMixin, Base):
+    """One user's own AI engine: a provider, a model and THEIR API key, used for their requests
+    in place of the operator's engine (app/ai/user_keys.py).
+
+    SERVER-ONLY, like WorkspaceInvitation: absent from sync-rules.yaml, the client schema and
+    TABLE_MODELS on purpose. It holds a credential, and a synced row stays on every device for
+    good. The settings panel reads it over GET /ai/settings, which never returns the key. The key
+    is encrypted at rest with AI_KEYS_SECRET, so a database dump alone does not leak it.
+    """
+
+    __tablename__ = "user_ai_settings"
+
+    # better-auth user id, String(64) with no FK, exactly like favorites.user_id. One row each.
+    user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    # A preset key ("openai", "anthropic", ...) or "custom".
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    # Only for "custom". A preset's URL is read from code at use time, so a fix there applies.
+    base_url: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    api_key_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    # The key's last four characters, so the panel can say which key is stored.
+    key_hint: Mapped[str] = mapped_column(String(16), nullable=False, server_default="")

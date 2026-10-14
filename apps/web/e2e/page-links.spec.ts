@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures";
-import { expectNewPageOpened } from "./helpers/pages";
+import { clickNewPage, expectNewPageOpened } from "./helpers/pages";
 
 /**
  * Second brain, phase A — `[[` page links.
@@ -22,7 +22,7 @@ test.describe("page links", () => {
    */
   async function newPage(page: import("@playwright/test").Page, title: string) {
     const before = page.url();
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     await expect.poll(() => page.url(), { timeout: 20_000 }).not.toBe(before);
     await expect(page).toHaveURL(/\/p\//, { timeout: 20_000 });
     await expect(editorOf(page)).toBeVisible({ timeout: 20_000 });

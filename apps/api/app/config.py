@@ -72,6 +72,18 @@ class Settings(BaseSettings):
             return value.strip()
         return OPENAI_BASE_URL if info.field_name == "ai_base_url" else "gpt-4o-mini"
 
+    # A user's OWN API key, set in Personalization > AI (app/ai/user_keys.py), takes the place of
+    # the engine above for that user's requests. Stored encrypted with a key derived from this
+    # secret; empty disables the feature, since a key stored without it would be plain text.
+    # Any random string of 32+ characters (`openssl rand -hex 32`); shorter leaves the feature
+    # off. Changing it makes stored keys unreadable: AI is off for their owners until they enter
+    # them again.
+    ai_keys_secret: str = ""
+    # Whether a user may point their key at a URL of their own (a self-hosted Ollama, say). Off
+    # by default: the SERVER makes that request, so on a shared instance a user-chosen URL could
+    # reach addresses only the server can (internal services, cloud metadata). Self-host only.
+    ai_allow_custom_url: bool = False
+
     # Transactional email (workspace invites). An empty email_api_key selects the offline
     # ConsoleProvider — the invite is still created and its link still works, it just isn't
     # delivered, so dev and tests stay network-free (same contract as ai_api_key above).

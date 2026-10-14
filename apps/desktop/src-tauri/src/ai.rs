@@ -114,10 +114,11 @@ fn spec_for(kind: &str) -> Option<&'static CliSpec> {
 
 /// Resolved binary paths and live runs.
 ///
-/// Resolution is cached because it can cost a login-shell spawn (see `locate`), and the answer
-/// does not change while the app is open.
+/// A FOUND path is cached, because resolving can cost a login-shell spawn (see `locate`). A miss
+/// is not: someone who installs `claude` while the app is open and presses "Check again" must
+/// not be told it is still missing until a restart.
 pub struct AiState {
-    resolved: Mutex<HashMap<&'static str, Option<PathBuf>>>,
+    resolved: Mutex<HashMap<&'static str, PathBuf>>,
     running: Mutex<HashMap<String, oneshot::Sender<()>>>,
     /// One CLI at a time. Each run is a real agent process, so a burst of clicks must not
     /// become a burst of them.
@@ -410,15 +411,21 @@ fn cli_delta(line: &str) -> Option<String> {
 
 async fn resolve(state: &AiState, spec: &'static CliSpec) -> Option<PathBuf> {
     if let Some(cached) = state.resolved.lock().await.get(spec.binary) {
-        return cached.clone();
+        return Some(cached.clone());
     }
-    let found = locate(spec.binary).await;
+    let found = locate(spec.binary).await?;
     state
         .resolved
         .lock()
         .await
         .insert(spec.binary, found.clone());
-    found
+    Some(found)
+}
+
+/// Where the user's `claude` is, for signing it in (`ai_login.rs`).
+pub(crate) async fn claude_binary(state: &AiState) -> Option<PathBuf> {
+    let spec = spec_for("claude-cli")?;
+    resolve(state, spec).await
 }
 
 /// The absolute path to `name`, or None.

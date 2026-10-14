@@ -1,5 +1,6 @@
 import { aiEngineConfigured, apiPost } from "./helpers/api";
 import { expect, test } from "./fixtures";
+import { clickNewPage } from "./helpers/pages";
 
 /**
  * Phase 3 — the ambient daily AI summary, at the API level (the UI lives in recap.spec.ts).
@@ -20,7 +21,7 @@ test.describe("ai daily summary", () => {
     );
 
     // Create a little activity so the summary has something to reflect.
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     await page.waitForTimeout(1500); // let it upload to Postgres
 
     const res = await apiPost(page.request, "/ai/daily-summary", {});
@@ -47,7 +48,7 @@ test.describe("ai daily summary", () => {
      * It is the half a desktop asks for when it is going to write the recap itself with the
      * user's own CLI. The facts still come from Postgres, behind the membership check.
      */
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     await page.waitForTimeout(1500); // let it upload to Postgres
 
     const res = await apiPost(page.request, "/ai/daily-summary", { prose: false });

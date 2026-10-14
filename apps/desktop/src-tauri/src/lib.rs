@@ -11,13 +11,15 @@
 //!   - **Tray + native notifications**, so reminders arrive while the window is closed.
 //!   - **The user's own AI subscription** (`ai.rs`): a browser cannot spawn the `claude` or
 //!     `codex` binary the user already installed, so AI on the desktop costs the operator
-//!     nothing and the text never leaves the machine.
+//!     nothing and the text never leaves the machine. `ai_login.rs` signs that `claude` in from
+//!     the app, for someone who would rather not open a terminal.
 //!
 //! The PowerSync Tauri SDK is alpha and its JS↔Rust protocol is explicitly unstable, so both
 //! crates are pinned exactly and must move together with the JS packages in apps/web — see
 //! .claude/memory/powersync-version-alignment.md.
 
 mod ai;
+mod ai_login;
 mod commands;
 mod connector;
 mod session;
@@ -28,6 +30,7 @@ use std::sync::Arc;
 use tauri::Manager;
 
 use crate::ai::AiState;
+use crate::ai_login::LoginState;
 use crate::commands::SyncState;
 use crate::session::SessionStore;
 
@@ -44,6 +47,7 @@ pub fn run() {
         .plugin(tauri_plugin_powersync::init())
         .manage(SyncState::default())
         .manage(AiState::default())
+        .manage(LoginState::default())
         .setup(|app| {
             // Both live under the app's own data directory, so a second account on the same
             // machine never shares them.
@@ -62,6 +66,11 @@ pub fn run() {
             ai::ai_detect,
             ai::ai_run,
             ai::ai_cancel,
+            ai_login::ai_login_status,
+            ai_login::ai_login_start,
+            ai_login::ai_login_code,
+            ai_login::ai_login_open,
+            ai_login::ai_login_cancel,
         ])
         .run(tauri::generate_context!())
         .expect("error while running TendTo");

@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 
 import { expect, test } from "./fixtures";
+import { clickNewPage } from "./helpers/pages";
 
 /**
  * Folders in the Pages tree, worked like an editor's file explorer: the header's "New page" and
@@ -41,7 +42,7 @@ async function newFolder(page: Page, name: string): Promise<void> {
 
 async function newPageTitled(page: Page, title: string): Promise<void> {
   const before = page.url();
-  await page.getByRole("button", { name: "New page" }).click();
+  await clickNewPage(page);
   // Wait for the NEW page's title: right after the click the previous page's title field can
   // still be on screen, and filling that one renames the wrong page.
   await expect(page).not.toHaveURL(before);

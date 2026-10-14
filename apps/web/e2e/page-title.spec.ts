@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures";
+import { clickNewPage } from "./helpers/pages";
 
 /**
  * Solo use — a page can be named. The title is editable in the editor, shows in the sidebar, and
@@ -10,7 +11,7 @@ test.describe("page title", () => {
   }) => {
     const name = `Note ${Date.now().toString(36)}`;
 
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     await page.getByTestId("page-title").fill(name);
     await page.waitForTimeout(900); // debounced title save
 

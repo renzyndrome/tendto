@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import type { Download } from "@playwright/test";
 
 import { expect, test } from "./fixtures";
+import { clickNewPage } from "./helpers/pages";
 
 /**
  * Phase 3 — workspace export. "Export" downloads the workspace as JSON + Markdown, and the JSON
@@ -12,7 +13,7 @@ test.describe("export", () => {
   test("exports the workspace as JSON and Markdown", async ({ authedPage: page }) => {
     const marker = `export-${Date.now().toString(36)}`;
 
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     const editor = page.locator('[contenteditable="true"]').first();
     await expect(editor).toBeVisible({ timeout: 20_000 });
     await editor.click();

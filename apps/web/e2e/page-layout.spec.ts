@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures";
+import { clickNewPage } from "./helpers/pages";
 
 /**
  * A page's title and body share one left edge. BlockNote insets its text 54px for the drag
@@ -9,7 +10,7 @@ import { expect, test } from "./fixtures";
  */
 test.describe("page layout", () => {
   test("title and body text start at the same x", async ({ authedPage: page }) => {
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     const editor = page.locator('[contenteditable="true"]').first();
     await expect(editor).toBeVisible({ timeout: 20_000 });
     await editor.click();

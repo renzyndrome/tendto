@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "./fixtures";
-import { expectNewPageOpened } from "./helpers/pages";
+import { clickNewPage, expectNewPageOpened } from "./helpers/pages";
 
 /**
  * Second brain, phase C — related pages.
@@ -12,7 +12,7 @@ test.describe("related pages", () => {
 
   async function newPage(page: Page, title: string, body: string) {
     const before = page.url();
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     await expect.poll(() => page.url(), { timeout: 20_000 }).not.toBe(before);
     await expectNewPageOpened(page);
     await page.getByTestId("page-title").fill(title);

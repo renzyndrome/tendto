@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 
 import { expect, test } from "./fixtures";
+import { clickNewPage } from "./helpers/pages";
 
 /**
  * Folders in the Collections section: the same explorer as Pages (folders.spec.ts), over the
@@ -100,7 +101,7 @@ test.describe("collection folders", () => {
     const folder = `Boards ${stamp}`;
     await newFolder(page, folder);
 
-    await page.getByRole("button", { name: "New page" }).click();
+    await clickNewPage(page);
     const title = page.getByTestId("page-title");
     await expect(title).toHaveValue(/^Untitled/, { timeout: 20_000 });
     const pageName = `Loose page ${stamp}`;
