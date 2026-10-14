@@ -78,6 +78,11 @@ struct CliSpec {
 /// equivalent of. `codex exec` is read-only by default already, so this is belt and braces: it
 /// blocks file writes and network access, and if the flag were ever wrong the CLI would exit
 /// non-zero rather than run unconstrained. That is the right way round for a guess.
+///
+/// `gemini` is UNVERIFIED too, and for the same reason. It reads a piped prompt and exits (its
+/// documented headless mode). `--approval-mode default` is its containment: no tool runs without
+/// an approval, and in a run with no terminal there is nobody to give one. A wrong flag again
+/// fails the run rather than loosening it.
 const CLIS: &[CliSpec] = &[
     CliSpec {
         kind: "claude-cli",
@@ -103,6 +108,14 @@ const CLIS: &[CliSpec] = &[
             "read-only",
             "-",
         ],
+        stream_args: &[],
+        verified: false,
+    },
+    CliSpec {
+        kind: "gemini-cli",
+        label: "Gemini CLI",
+        binary: "gemini",
+        args: &["--approval-mode", "default"],
         stream_args: &[],
         verified: false,
     },
@@ -422,9 +435,10 @@ async fn resolve(state: &AiState, spec: &'static CliSpec) -> Option<PathBuf> {
     Some(found)
 }
 
-/// Where the user's `claude` is, for signing it in (`ai_login.rs`).
-pub(crate) async fn claude_binary(state: &AiState) -> Option<PathBuf> {
-    let spec = spec_for("claude-cli")?;
+/// Where the CLI of this `kind` is, for signing it in (`ai_login.rs`). None for a kind not in
+/// CLIS, so nothing but a known binary name is ever looked up.
+pub(crate) async fn binary_for(state: &AiState, kind: &str) -> Option<PathBuf> {
+    let spec = spec_for(kind)?;
     resolve(state, spec).await
 }
 
@@ -444,7 +458,7 @@ async fn locate(name: &str) -> Option<PathBuf> {
     login_shell_path(name).await
 }
 
-fn on_path(name: &str) -> Option<PathBuf> {
+pub(crate) fn on_path(name: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     std::env::split_paths(&path)
         .map(|dir| dir.join(name))
@@ -541,6 +555,7 @@ mod tests {
     fn knows_only_the_engines_in_the_table() {
         assert!(spec_for("claude-cli").is_some());
         assert!(spec_for("codex-cli").is_some());
+        assert!(spec_for("gemini-cli").is_some());
         assert!(spec_for("anything-else").is_none());
     }
 
@@ -569,6 +584,18 @@ mod tests {
         assert!(
             !codex.verified,
             "codex has never been run here; do not mark it verified"
+        );
+
+        // gemini: no tool runs without an approval, and a headless run cannot give one.
+        let gemini = spec_for("gemini-cli").unwrap();
+        assert!(gemini.args.contains(&"--approval-mode"));
+        assert!(
+            gemini.args.contains(&"default"),
+            "gemini auto-approves tools"
+        );
+        assert!(
+            !gemini.verified,
+            "gemini has never been run here; do not mark it verified"
         );
     }
 

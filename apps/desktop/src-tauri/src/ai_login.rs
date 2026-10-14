@@ -1,19 +1,21 @@
-//! Sign the user's own `claude` in from the app: `claude auth login`, with its sign-in link shown
-//! in the window.
+//! Sign the user's own coding-agent CLI in from the app: `claude auth login` or `codex login`,
+//! with the sign-in link they print opened from here, or `gemini` opened in a terminal, since it
+//! signs in only through its own screen.
 //!
-//! The same CLI `ai.rs` runs, on the same machine, for the same person. This does only what
-//! typing `claude auth login` in a terminal does, so someone without a terminal habit can still
-//! put their own subscription to work. It never runs on the server: a server's `claude` is one
-//! account for everyone, and signing it in from a browser would let any user take it over.
+//! The same CLIs `ai.rs` runs, on the same machine, for the same person. This does only what
+//! typing the command in a terminal does, so someone without a terminal habit can still put their
+//! own subscription to work. It never runs on the server: a server's CLI is one account for
+//! everyone, and signing it in from a browser would let any user take it over.
 //!
-//! Three rules, all about what the webview can make Rust do:
+//! Rules, all about what the webview can make Rust do:
 //!
-//!   - argv is literal (`auth login`, `auth status --json`). Nothing from the webview reaches it.
-//!   - The only link the app ever opens is one the CLI itself printed, over https, on a Claude or
-//!     Anthropic host. The webview cannot hand Rust a URL to open, and is never TOLD the link
+//!   - The webview names a CLI by `kind`, and nothing else. argv, status commands, link hosts and
+//!     install pages are literals in `LOGINS`.
+//!   - The only link the app ever opens is one the CLI itself printed, over https, on that CLI's
+//!     vendor's hosts. The webview cannot hand Rust a URL to open, and is never TOLD the link
 //!     either: with it, a compromised page could send the link elsewhere, have it authorized
-//!     with a stranger's account, and paste that code back, signing this machine's `claude`
-//!     into an account that would then read the user's notes. Rust holds it and opens it.
+//!     with a stranger's account, and paste that code back, signing this machine's CLI into an
+//!     account that would then read the user's notes. Rust holds it and opens it.
 //!   - The one piece of text the webview sends is the code a sign-in page may show. It goes to
 //!     the CLI's stdin after a shape check, as a single line.
 
@@ -30,7 +32,7 @@ use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::time::{sleep_until, timeout, Duration, Instant};
 
-use crate::ai::{claude_binary, AiState};
+use crate::ai::{binary_for, on_path, AiState};
 
 /// Emitted with each `LoginEvent`.
 const LOGIN_EVENT: &str = "ai://login";
@@ -40,8 +42,71 @@ const LOGIN_TIMEOUT: Duration = Duration::from_secs(600);
 
 const STATUS_TIMEOUT: Duration = Duration::from_secs(20);
 
-/// Hosts a sign-in link may point at, or a subdomain of one.
-const SIGN_IN_HOSTS: &[&str] = &["claude.ai", "claude.com", "anthropic.com"];
+/// How one CLI signs in. Every value is a literal: the webview names a `kind`, nothing more.
+struct LoginSpec {
+    kind: &'static str,
+    /// argv that starts a sign-in which prints a link, or None for a CLI that signs in only
+    /// through its own interactive screen. That one is opened in a terminal instead.
+    login_args: Option<&'static [&'static str]>,
+    status: StatusCheck,
+    /// Hosts a sign-in link may point at, or a subdomain of one.
+    hosts: &'static [&'static str],
+    /// Where `ai_login_install` sends someone who does not have the CLI yet.
+    install_url: &'static str,
+}
+
+enum StatusCheck {
+    /// JSON with `loggedIn`, and optionally `email` and `subscriptionType`: `claude auth status`.
+    Json(&'static [&'static str]),
+    /// Exit code 0 means signed in: `codex login status`.
+    ExitCode(&'static [&'static str]),
+    /// The CLI has no way to ask: `gemini`.
+    Unknown,
+}
+
+/// Kept in step with `CLI_TOOLS` in apps/web/src/components/layout/cli-tools.ts, which links the
+/// same install pages from the browser.
+const LOGINS: &[LoginSpec] = &[
+    LoginSpec {
+        kind: "claude-cli",
+        login_args: Some(&["auth", "login"]),
+        status: StatusCheck::Json(&["auth", "status", "--json"]),
+        hosts: &["claude.ai", "claude.com", "anthropic.com"],
+        install_url: "https://docs.claude.com/en/docs/claude-code/setup",
+    },
+    LoginSpec {
+        kind: "codex-cli",
+        login_args: Some(&["login"]),
+        status: StatusCheck::ExitCode(&["login", "status"]),
+        hosts: &["openai.com", "chatgpt.com"],
+        install_url: "https://developers.openai.com/codex/cli",
+    },
+    LoginSpec {
+        kind: "gemini-cli",
+        login_args: None,
+        status: StatusCheck::Unknown,
+        hosts: &[],
+        install_url: "https://geminicli.com/docs/get-started",
+    },
+];
+
+fn login_spec(kind: &str) -> Result<&'static LoginSpec, String> {
+    LOGINS
+        .iter()
+        .find(|spec| spec.kind == kind)
+        .ok_or_else(|| format!("Unknown CLI '{kind}'."))
+}
+
+/// Terminals tried in order on Linux, with the argument that makes each run a command.
+const LINUX_TERMINALS: &[(&str, &[&str])] = &[
+    ("x-terminal-emulator", &["-e"]),
+    ("gnome-terminal", &["--"]),
+    ("konsole", &["-e"]),
+    ("xfce4-terminal", &["-x"]),
+    ("alacritty", &["-e"]),
+    ("kitty", &[]),
+    ("xterm", &["-e"]),
+];
 
 const MAX_CODE: usize = 500;
 
@@ -69,6 +134,7 @@ pub struct LoginState {
 struct LoginRun {
     /// Tells a finished run's cleanup apart from a newer run that replaced it.
     id: u64,
+    spec: &'static LoginSpec,
     stdin: Option<ChildStdin>,
     cancel: Option<oneshot::Sender<()>>,
     /// The sign-in link the CLI printed, once it has. The only URL `ai_login_open` will open.
@@ -76,14 +142,19 @@ struct LoginRun {
     last_open: Option<Instant>,
 }
 
-/// What the webview hears. Deliberately without the link itself; see the module note.
+/// What the webview hears. Deliberately without the link itself; see the module note. `cli` is
+/// the `kind` signing in, so each row on screen hears only its own.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum LoginEvent {
     /// The CLI printed its sign-in link: "Open sign-in page" can work now.
-    Link,
-    /// The sign-in ended. `ok` is read from `claude auth status`, not guessed from the exit code.
-    Done { ok: bool, message: String },
+    Link { cli: String },
+    /// The sign-in ended. `ok` is read from the CLI's status command, not from its exit code.
+    Done {
+        cli: String,
+        ok: bool,
+        message: String,
+    },
 }
 
 /// What `watch_login` reports to its owner, which keeps the link and tells the webview the rest.
@@ -98,29 +169,37 @@ enum Watched {
 pub struct LoginStatus {
     found: bool,
     logged_in: bool,
+    /// False when the CLI cannot say whether it is signed in.
+    known: bool,
     email: Option<String>,
     subscription: Option<String>,
 }
 
-/// Whether `claude` is installed here, and signed in.
+/// Whether the CLI of this `kind` is installed here, and signed in.
 #[tauri::command]
-pub async fn ai_login_status(ai: State<'_, AiState>) -> Result<LoginStatus, String> {
-    match claude_binary(ai.inner()).await {
-        Some(binary) => Ok(read_status(&binary).await),
+pub async fn ai_login_status(ai: State<'_, AiState>, kind: String) -> Result<LoginStatus, String> {
+    let spec = login_spec(&kind)?;
+    match binary_for(ai.inner(), spec.kind).await {
+        Some(binary) => Ok(read_status(&binary, spec).await),
         None => Ok(LoginStatus::default()),
     }
 }
 
-/// Start `claude auth login`. Progress arrives as `ai://login` events.
+/// Start the sign-in of a CLI that prints a link. Progress arrives as `ai://login` events.
 #[tauri::command]
 pub async fn ai_login_start<R: Runtime>(
     app: AppHandle<R>,
     ai: State<'_, AiState>,
     login: State<'_, LoginState>,
+    kind: String,
 ) -> Result<(), String> {
-    let binary = claude_binary(ai.inner())
+    let spec = login_spec(&kind)?;
+    let login_args = spec
+        .login_args
+        .ok_or("This CLI signs in through its own screen. Open it in a terminal.")?;
+    let binary = binary_for(ai.inner(), spec.kind)
         .await
-        .ok_or("claude not found on PATH or in a login shell.")?;
+        .ok_or("CLI not found on PATH or in a login shell.")?;
 
     let mut slot = login.run.lock().await;
     // A second click starts over rather than running two sign-ins side by side.
@@ -129,16 +208,17 @@ pub async fn ai_login_start<R: Runtime>(
     }
 
     let mut child = cli(&binary)
-        .args(["auth", "login"])
+        .args(login_args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|error| format!("claude failed to start: {error}"))?;
+        .map_err(|error| format!("Sign-in failed to start: {error}"))?;
     let (cancel, cancelled) = oneshot::channel();
     let id = NEXT_RUN.fetch_add(1, Ordering::Relaxed);
     *slot = Some(LoginRun {
         id,
+        spec,
         stdin: child.stdin.take(),
         cancel: Some(cancel),
         link: None,
@@ -149,7 +229,7 @@ pub async fn ai_login_start<R: Runtime>(
     let shared = Arc::clone(&login.run);
     tokio::spawn(async move {
         let (events, mut received) = mpsc::unbounded_channel();
-        let watching = tokio::spawn(watch_login(child, cancelled, binary, events));
+        let watching = tokio::spawn(watch_login(child, cancelled, binary, spec, events));
         while let Some(watched) = received.recv().await {
             let event = {
                 let mut slot = shared.lock().await;
@@ -158,16 +238,17 @@ pub async fn ai_login_start<R: Runtime>(
                 if slot.as_ref().map(|run| run.id) != Some(id) {
                     continue;
                 }
+                let cli = spec.kind.to_string();
                 match watched {
                     Watched::Link(url) => {
                         if let Some(run) = slot.as_mut() {
                             run.link = Some(url);
                         }
-                        LoginEvent::Link
+                        LoginEvent::Link { cli }
                     }
                     Watched::Done { ok, message } => {
                         *slot = None;
-                        LoginEvent::Done { ok, message }
+                        LoginEvent::Done { cli, ok, message }
                     }
                 }
             };
@@ -212,7 +293,7 @@ pub async fn ai_login_code(login: State<'_, LoginState>, code: String) -> Result
 /// Open the sign-in link the CLI printed, in the system browser. Takes no URL from the webview.
 #[tauri::command]
 pub async fn ai_login_open(login: State<'_, LoginState>) -> Result<(), String> {
-    let link = {
+    let (link, hosts) = {
         let mut slot = login.run.lock().await;
         let run = slot.as_mut().ok_or("No sign-in running.")?;
         let link = run.link.clone().ok_or("No sign-in link yet.")?;
@@ -220,11 +301,11 @@ pub async fn ai_login_open(login: State<'_, LoginState>) -> Result<(), String> {
             return Ok(());
         }
         run.last_open = Some(Instant::now());
-        link
+        (link, run.spec.hosts)
     };
     // Only a link that passed this check is ever stored. Checked again here anyway, since this
     // is the line that hands it to the operating system.
-    let link = sign_in_link(&link).ok_or("Sign-in link refused.")?;
+    let link = sign_in_link(&link, hosts).ok_or("Sign-in link refused.")?;
     let mut child = opener(&link)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -232,6 +313,44 @@ pub async fn ai_login_open(login: State<'_, LoginState>) -> Result<(), String> {
         .spawn()
         .map_err(|error| format!("Browser not opened: {error}"))?;
     // Reaped in the background, so the opener does not linger as a zombie.
+    tokio::spawn(async move {
+        let _ = child.wait().await;
+    });
+    Ok(())
+}
+
+/// Open a CLI that signs in only through its own screen (`gemini`) in a terminal window.
+#[tauri::command]
+pub async fn ai_login_terminal(ai: State<'_, AiState>, kind: String) -> Result<(), String> {
+    let spec = login_spec(&kind)?;
+    let binary = binary_for(ai.inner(), spec.kind)
+        .await
+        .ok_or("CLI not found on PATH or in a login shell.")?;
+    let mut command = terminal(&binary).ok_or("No terminal found. Run the CLI in a terminal.")?;
+    command.env("PATH", path_with(&binary));
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("Terminal not opened: {error}"))?;
+    // The terminal stays open after this returns: reaped when it closes, never killed.
+    tokio::spawn(async move {
+        let _ = child.wait().await;
+    });
+    Ok(())
+}
+
+/// Open the install guide of a CLI, in the system browser.
+#[tauri::command]
+pub async fn ai_login_install(kind: String) -> Result<(), String> {
+    let spec = login_spec(&kind)?;
+    let mut child = opener(spec.install_url)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("Browser not opened: {error}"))?;
     tokio::spawn(async move {
         let _ = child.wait().await;
     });
@@ -267,6 +386,7 @@ async fn watch_login(
     mut child: Child,
     mut cancelled: oneshot::Receiver<()>,
     binary: PathBuf,
+    spec: &'static LoginSpec,
     events: mpsc::UnboundedSender<Watched>,
 ) {
     let (lines_in, mut lines) = mpsc::unbounded_channel();
@@ -284,7 +404,7 @@ async fn watch_login(
     let ended = loop {
         tokio::select! {
             line = lines.recv(), if streams_open => match line {
-                Some(line) => seen.take(&line, &events),
+                Some(line) => seen.take(&line, spec.hosts, &events),
                 None => streams_open = false,
             },
             _ = child.wait() => break Ended::Exited,
@@ -311,9 +431,9 @@ async fn watch_login(
         Ended::Exited => {
             // The last lines can still be in flight when the process ends.
             while let Ok(Some(line)) = timeout(Duration::from_millis(500), lines.recv()).await {
-                seen.take(&line, &events);
+                seen.take(&line, spec.hosts, &events);
             }
-            if read_status(&binary).await.logged_in {
+            if read_status(&binary, spec).await.logged_in {
                 Watched::Done {
                     ok: true,
                     message: "Signed in.".to_string(),
@@ -339,9 +459,9 @@ struct Seen {
 }
 
 impl Seen {
-    fn take(&mut self, line: &str, events: &mpsc::UnboundedSender<Watched>) {
+    fn take(&mut self, line: &str, hosts: &[&str], events: &mpsc::UnboundedSender<Watched>) {
         if !self.link_sent {
-            if let Some(url) = sign_in_url(line) {
+            if let Some(url) = sign_in_url(line, hosts) {
                 self.link_sent = true;
                 let _ = events.send(Watched::Link(url));
             }
@@ -390,24 +510,38 @@ where
     });
 }
 
-async fn read_status(binary: &Path) -> LoginStatus {
+async fn read_status(binary: &Path, spec: &LoginSpec) -> LoginStatus {
+    let signed_out = LoginStatus {
+        found: true,
+        known: true,
+        ..LoginStatus::default()
+    };
+    let args = match spec.status {
+        StatusCheck::Json(args) | StatusCheck::ExitCode(args) => args,
+        StatusCheck::Unknown => {
+            return LoginStatus {
+                found: true,
+                ..LoginStatus::default()
+            }
+        }
+    };
     let output = timeout(
         STATUS_TIMEOUT,
-        cli(binary)
-            .args(["auth", "status", "--json"])
-            .stdin(Stdio::null())
-            .output(),
+        cli(binary).args(args).stdin(Stdio::null()).output(),
     )
     .await;
-    // Read from stdout whatever the exit code: a signed-out CLI may well exit non-zero.
-    let parsed = match output {
-        Ok(Ok(output)) => parse_status(&output.stdout),
-        _ => None,
+    let Ok(Ok(output)) = output else {
+        return signed_out;
     };
-    parsed.unwrap_or(LoginStatus {
-        found: true,
-        ..LoginStatus::default()
-    })
+    match spec.status {
+        // Read from stdout whatever the exit code: a signed-out CLI may well exit non-zero.
+        StatusCheck::Json(_) => parse_status(&output.stdout).unwrap_or(signed_out),
+        StatusCheck::ExitCode(_) => LoginStatus {
+            logged_in: output.status.success(),
+            ..signed_out
+        },
+        StatusCheck::Unknown => signed_out,
+    }
 }
 
 /// `claude auth status --json`, of which only these fields are read.
@@ -416,6 +550,7 @@ fn parse_status(stdout: &[u8]) -> Option<LoginStatus> {
     let text = |key: &str| value.get(key).and_then(|v| v.as_str()).map(str::to_string);
     Some(LoginStatus {
         found: true,
+        known: true,
         logged_in: value.get("loggedIn")?.as_bool()?,
         email: text("email"),
         subscription: text("subscriptionType"),
@@ -428,16 +563,42 @@ fn parse_status(stdout: &[u8]) -> Option<LoginStatus> {
 /// PATH with no `node` on it. nvm puts `node` in the same directory as `claude`.
 fn cli(binary: &Path) -> Command {
     let mut command = Command::new(binary);
-    if let Some(dir) = binary.parent() {
-        let inherited = std::env::var_os("PATH").unwrap_or_default();
-        let paths = std::iter::once(dir.to_path_buf()).chain(std::env::split_paths(&inherited));
-        if let Ok(joined) = std::env::join_paths(paths) {
-            command.env("PATH", joined);
-        }
-    }
+    command.env("PATH", path_with(binary));
     // Closing the window mid-sign-in must not leave the CLI running.
     command.kill_on_drop(true);
     command
+}
+
+/// PATH with the CLI's own directory first. See `cli`.
+fn path_with(binary: &Path) -> std::ffi::OsString {
+    let inherited = std::env::var_os("PATH").unwrap_or_default();
+    let dirs = binary
+        .parent()
+        .map(Path::to_path_buf)
+        .into_iter()
+        .chain(std::env::split_paths(&inherited));
+    std::env::join_paths(dirs).unwrap_or(inherited)
+}
+
+/// A terminal window running `binary`, for a CLI that signs in only through its own screen.
+/// The binary is an argument, never part of a shell string.
+fn terminal(binary: &Path) -> Option<Command> {
+    if cfg!(target_os = "macos") {
+        let mut command = Command::new("open");
+        command.args(["-a", "Terminal"]).arg(binary);
+        return Some(command);
+    }
+    if cfg!(windows) {
+        let mut command = Command::new("cmd");
+        command.args(["/C", "start", ""]).arg(binary);
+        return Some(command);
+    }
+    LINUX_TERMINALS.iter().find_map(|(name, args)| {
+        let path = on_path(name)?;
+        let mut command = Command::new(path);
+        command.args(*args).arg(binary);
+        Some(command)
+    })
 }
 
 /// The system's own "open this URL" command. The URL is an argument, never a shell string.
@@ -462,14 +623,16 @@ fn opener(url: &str) -> Command {
 ///
 /// Read from the raw line, so a link inside a terminal hyperlink (OSC 8) is found too: the scan
 /// stops at any control character, which is how those sequences end.
-fn sign_in_url(line: &str) -> Option<String> {
+fn sign_in_url(line: &str, hosts: &[&str]) -> Option<String> {
     let mut rest = line;
     while let Some(start) = rest.find("https://") {
         let candidate: String = rest[start..]
             .chars()
             .take_while(|c| !c.is_whitespace() && !c.is_control() && !"\"'<>`".contains(*c))
             .collect();
-        if let Some(link) = sign_in_link(candidate.trim_end_matches(['.', ',', ';', ')', ']'])) {
+        if let Some(link) =
+            sign_in_link(candidate.trim_end_matches(['.', ',', ';', ')', ']']), hosts)
+        {
             return Some(link);
         }
         rest = &rest[start + "https://".len()..];
@@ -477,17 +640,17 @@ fn sign_in_url(line: &str) -> Option<String> {
     None
 }
 
-/// `raw` in normal form when it is a sign-in link: https, no credentials, on a Claude or
-/// Anthropic host. Parsed exactly as a browser parses it (WHATWG), so the host checked is the
-/// host the browser will visit: `https://evil.com\.claude.ai` is `evil.com` to both.
-fn sign_in_link(raw: &str) -> Option<String> {
+/// `raw` in normal form when it is a sign-in link: https, no credentials, on one of `hosts`.
+/// Parsed exactly as a browser parses it (WHATWG), so the host checked is the host the browser
+/// will visit: `https://evil.com\.claude.ai` is `evil.com` to both.
+fn sign_in_link(raw: &str, hosts: &[&str]) -> Option<String> {
     let url = tauri::Url::parse(raw).ok()?;
     if url.scheme() != "https" || !url.username().is_empty() || url.password().is_some() {
         return None;
     }
     // Lowercase, and punycode for anything non-ASCII, so a look-alike never matches.
     let host = url.host_str()?;
-    let allowed = SIGN_IN_HOSTS.iter().any(|allowed| {
+    let allowed = hosts.iter().any(|allowed| {
         host == *allowed
             || host
                 .strip_suffix(allowed)
@@ -546,24 +709,52 @@ mod tests {
 
     const LINK: &str = "https://claude.ai/oauth/authorize?code=true&client_id=abc&state=xyz";
 
+    const CLAUDE: &[&str] = &["claude.ai", "claude.com", "anthropic.com"];
+
+    #[test]
+    fn knows_each_cli_and_nothing_else() {
+        for kind in ["claude-cli", "codex-cli", "gemini-cli"] {
+            let spec = login_spec(kind).unwrap();
+            assert!(spec.install_url.starts_with("https://"), "{kind}");
+        }
+        assert!(login_spec("anything-else").is_err());
+        // Claude's own hosts, from the table, so a change there shows up here.
+        assert_eq!(login_spec("claude-cli").unwrap().hosts, CLAUDE);
+        // gemini signs in only through its own screen: no link, so no hosts to allow.
+        assert!(login_spec("gemini-cli").unwrap().login_args.is_none());
+        assert!(login_spec("gemini-cli").unwrap().hosts.is_empty());
+    }
+
+    #[test]
+    fn a_link_is_checked_against_its_own_vendor() {
+        let codex = login_spec("codex-cli").unwrap().hosts;
+        let openai = "https://auth.openai.com/oauth/authorize?client_id=x&state=y";
+        let line = format!("Starting local login server on http://localhost:1455. Visit {openai}");
+        assert_eq!(sign_in_url(&line, codex).as_deref(), Some(openai));
+        // One vendor's CLI never opens another vendor's link, nor the local callback.
+        assert_eq!(sign_in_url(&format!("visit {LINK}"), codex), None);
+        assert_eq!(sign_in_url(&format!("visit {openai}"), CLAUDE), None);
+        assert_eq!(sign_in_url("visit http://localhost:1455/auth", codex), None);
+    }
+
     #[test]
     fn finds_a_plain_sign_in_link() {
         let line = format!("If the browser did not open, visit: {LINK}");
-        assert_eq!(sign_in_url(&line).as_deref(), Some(LINK));
+        assert_eq!(sign_in_url(&line, CLAUDE).as_deref(), Some(LINK));
     }
 
     #[test]
     fn finds_a_link_inside_colour_and_a_terminal_hyperlink() {
         let coloured = format!("Visit \u{1b}[4m{LINK}\u{1b}[0m to sign in.");
         let hyperlink = format!("\u{1b}]8;;{LINK}\u{7}Sign in\u{1b}]8;;\u{7}");
-        assert_eq!(sign_in_url(&coloured).as_deref(), Some(LINK));
-        assert_eq!(sign_in_url(&hyperlink).as_deref(), Some(LINK));
+        assert_eq!(sign_in_url(&coloured, CLAUDE).as_deref(), Some(LINK));
+        assert_eq!(sign_in_url(&hyperlink, CLAUDE).as_deref(), Some(LINK));
     }
 
     #[test]
     fn drops_trailing_punctuation() {
         let line = format!("({LINK}).");
-        assert_eq!(sign_in_url(&line).as_deref(), Some(LINK));
+        assert_eq!(sign_in_url(&line, CLAUDE).as_deref(), Some(LINK));
     }
 
     #[test]
@@ -577,11 +768,17 @@ mod tests {
             "no link at all",
         ];
         for line in refused {
-            assert_eq!(sign_in_url(line), None, "should have refused: {line}");
+            assert_eq!(
+                sign_in_url(line, CLAUDE),
+                None,
+                "should have refused: {line}"
+            );
         }
-        assert!(sign_in_link("https://console.anthropic.com/oauth/code/callback").is_some());
-        assert!(sign_in_link("https://claude.com/login").is_some());
-        assert!(sign_in_link("https://CLAUDE.AI/login").is_some());
+        assert!(
+            sign_in_link("https://console.anthropic.com/oauth/code/callback", CLAUDE).is_some()
+        );
+        assert!(sign_in_link("https://claude.com/login", CLAUDE).is_some());
+        assert!(sign_in_link("https://CLAUDE.AI/login", CLAUDE).is_some());
     }
 
     #[test]
@@ -596,12 +793,16 @@ mod tests {
             "https://xn--claude-ai.com/x",
         ];
         for raw in refused {
-            assert_eq!(sign_in_link(raw), None, "should have refused: {raw}");
+            assert_eq!(
+                sign_in_link(raw, CLAUDE),
+                None,
+                "should have refused: {raw}"
+            );
         }
         // A backslash is a path separator to a browser: this one IS claude.ai, and what gets
         // opened is the normal form, which says so plainly.
         assert_eq!(
-            sign_in_link("https://claude.ai\\@evil.com/x").as_deref(),
+            sign_in_link("https://claude.ai\\@evil.com/x", CLAUDE).as_deref(),
             Some("https://claude.ai/@evil.com/x")
         );
     }
@@ -609,7 +810,7 @@ mod tests {
     #[test]
     fn skips_a_foreign_link_to_find_the_sign_in_one() {
         let line = format!("Docs: https://example.com/help or sign in at {LINK}");
-        assert_eq!(sign_in_url(&line).as_deref(), Some(LINK));
+        assert_eq!(sign_in_url(&line, CLAUDE).as_deref(), Some(LINK));
     }
 
     #[test]
@@ -670,10 +871,52 @@ exit 0
         script
     }
 
+    /// A stand-in `codex`: `login status` exits 0 once signed in.
+    #[cfg(unix)]
+    fn fake_codex(dir: &Path, signed_in: bool) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+
+        let script = dir.join("codex");
+        let code = if signed_in { 0 } else { 1 };
+        std::fs::write(
+            &script,
+            format!("#!/bin/sh\necho 'Logged in using ChatGPT'\nexit {code}\n"),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        script
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn reads_codex_sign_in_from_its_exit_code() {
+        let spec = login_spec("codex-cli").unwrap();
+        let yes = tempfile::tempdir().unwrap();
+        let no = tempfile::tempdir().unwrap();
+
+        let signed_in = read_status(&fake_codex(yes.path(), true), spec).await;
+        let signed_out = read_status(&fake_codex(no.path(), false), spec).await;
+
+        assert!(signed_in.found && signed_in.known && signed_in.logged_in);
+        assert!(signed_out.found && signed_out.known && !signed_out.logged_in);
+    }
+
+    #[tokio::test]
+    async fn gemini_cannot_say_whether_it_is_signed_in() {
+        // Not even run: there is no status command to run.
+        let status = read_status(
+            Path::new("/nonexistent/gemini"),
+            login_spec("gemini-cli").unwrap(),
+        )
+        .await;
+        assert!(status.found && !status.known && !status.logged_in);
+    }
+
     #[cfg(unix)]
     async fn sign_in_with(code: &str) -> Vec<Watched> {
         let dir = tempfile::tempdir().unwrap();
         let binary = fake_claude(dir.path());
+        let spec = login_spec("claude-cli").unwrap();
         let mut child = cli(&binary)
             .args(["auth", "login"])
             .stdin(Stdio::piped())
@@ -684,7 +927,7 @@ exit 0
         let mut stdin = child.stdin.take().unwrap();
         let (_cancel, cancelled) = oneshot::channel();
         let (events, mut received) = mpsc::unbounded_channel();
-        let watching = tokio::spawn(watch_login(child, cancelled, binary, events));
+        let watching = tokio::spawn(watch_login(child, cancelled, binary, spec, events));
 
         let mut seen = vec![received.recv().await.unwrap()];
         stdin
@@ -732,6 +975,7 @@ exit 0
     async fn a_cancelled_sign_in_says_so() {
         let dir = tempfile::tempdir().unwrap();
         let binary = fake_claude(dir.path());
+        let spec = login_spec("claude-cli").unwrap();
         let mut child = cli(&binary)
             .args(["auth", "login"])
             .stdin(Stdio::piped())
@@ -744,7 +988,7 @@ exit 0
         let _stdin = child.stdin.take().unwrap();
         let (cancel, cancelled) = oneshot::channel();
         let (events, mut received) = mpsc::unbounded_channel();
-        let watching = tokio::spawn(watch_login(child, cancelled, binary, events));
+        let watching = tokio::spawn(watch_login(child, cancelled, binary, spec, events));
 
         assert!(matches!(received.recv().await, Some(Watched::Link(_))));
         cancel.send(()).unwrap();

@@ -71,6 +71,8 @@ pub fn run() {
             ai_login::ai_login_code,
             ai_login::ai_login_open,
             ai_login::ai_login_cancel,
+            ai_login::ai_login_terminal,
+            ai_login::ai_login_install,
         ])
         .run(tauri::generate_context!())
         .expect("error while running TendTo");
